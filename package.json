@@ -1,6 +1,6 @@
 {
   "name": "@piccollage/figma-asset-downloader",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A Node.js tool for downloading and converting Figma assets for Android projects",
   "main": "src/index.js",
   "type": "module",
@@ -8,7 +8,7 @@
     "figma-asset-downloader": "./src/index.js"
   },
   "scripts": {
-    "prepare": "node -e \"require('fs').chmodSync('src/index.js', '755')\"",
+    "build": "node -e \"require('fs').chmodSync('src/index.js', '755')\"",
     "start": "node src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
