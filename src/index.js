@@ -106,6 +106,10 @@ function loadConfig() {
       config.icons = { path: 'res' };
     }
 
+    if (!config.icons.prefix) {
+      config.icons.prefix = 'ic_';
+    }
+
     if (!config.images) {
       config.images = { path: 'res', format: 'webp', quality: 90 };
     }
@@ -116,6 +120,10 @@ function loadConfig() {
 
     if (!config.images.quality) {
       config.images.quality = 90;
+    }
+
+    if (!config.images.prefix) {
+      config.images.prefix = 'img_';
     }
 
     return config;
@@ -431,7 +439,7 @@ async function main() {
             // Extract the icon name from the component name (remove 'icon/' prefix)
             const iconName = component.name.replace('icon/', '');
             const sanitizedName = iconName.replace(/\s+/g, '_').toLowerCase();
-            const fileName = `ic_${sanitizedName}.xml`;
+            const fileName = `${config.icons.prefix}${sanitizedName}.xml`;
 
             // Create the drawable directory if it doesn't exist
             const drawablePath = path.join(config.icons.path, 'drawable');
@@ -483,7 +491,7 @@ async function main() {
             // Extract the image name from the component name (remove 'img/' prefix)
             const imageName = component.name.replace('img/', '');
             const sanitizedName = imageName.replace(/\s+/g, '_').toLowerCase();
-            const fileNameBase = `img_${sanitizedName}`;
+            const fileNameBase = `${config.images.prefix}${sanitizedName}`;
 
             // Download the image
             const imageBuffer = await downloadImage(imageUrl);

@@ -10,6 +10,7 @@ A Node.js tool for downloading and converting Figma assets for Android projects.
 - Configurable quality settings for image compression
 - Ability to skip specific DPI options
 - Customizable export paths for both icons and images
+- Configurable file prefixes for icons and images
 - Command-line interface to specify component names for selective downloads
 
 ## Installation
@@ -30,6 +31,8 @@ fileId: YOUR_FIGMA_FILE_ID
 icons:
   # Export path for icons (path to the res folder, doesn't need to be named "res")
   path: "path/to/your/res"
+  # Prefix for icon filenames (default: 'ic_')
+  prefix: "ic_"
 
 # Image configuration
 images:
@@ -39,6 +42,8 @@ images:
   format: "webp"  # or "png"
   # Quality setting for compression (1-100)
   quality: 90
+  # Prefix for image filenames (default: 'img_')
+  prefix: "img_"
   # Optional: Array of DPI options to skip during export
   # Valid values: "mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"
   skipDpi:
@@ -130,22 +135,22 @@ After running the tool, your assets will be organized as follows:
 ```
 path/to/your/res/
 ├── drawable/
-│   └── ic_component_name.xml
+│   └── [prefix]component_name.xml  # prefix is configurable, default is "ic_"
 ```
 
 ### Images
 ```
 path/to/your/images/
 ├── drawable-mdpi/
-│   └── img_component_name.png
+│   └── [prefix]component_name.png  # prefix is configurable, default is "img_"
 ├── drawable-hdpi/
-│   └── img_component_name.png
+│   └── [prefix]component_name.png
 ├── drawable-xhdpi/
-│   └── img_component_name.png
+│   └── [prefix]component_name.png
 ├── drawable-xxhdpi/
-│   └── img_component_name.png
+│   └── [prefix]component_name.png
 └── drawable-xxxhdpi/
-│   └── img_component_name.png
+│   └── [prefix]component_name.png
 ```
 
 ## Requirements
