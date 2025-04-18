@@ -63,6 +63,9 @@ build/Release
 .env
 .env.test
 
+# publish configuration
+.npmrc
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 
