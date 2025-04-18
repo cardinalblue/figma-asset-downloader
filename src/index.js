@@ -57,9 +57,29 @@ program
   .version('1.0.0')
   .description('Download and convert Figma assets for Android projects')
   .argument('[componentNames...]', 'Component names to download (e.g., icon/home img/banner)')
+  .option('-a, --all', 'Download all components')
   .parse(process.argv);
 
 const componentNames = program.args;
+const downloadAll = program.opts().all;
+
+// Show help message if no component names are provided and --all flag is not set
+if (componentNames.length === 0 && !downloadAll) {
+  console.log(chalk.blue('Figma Asset Downloader'));
+  console.log(chalk.blue('======================'));
+  console.log('\nUsage:');
+  console.log('  figma-asset-downloader [options] [componentNames...]');
+  console.log('\nOptions:');
+  console.log('  -a, --all                Download all components');
+  console.log('  -V, --version            Output the version number');
+  console.log('  -h, --help               Display help for command');
+  console.log('\nExamples:');
+  console.log('  figma-asset-downloader icon/home          # Download a specific icon');
+  console.log('  figma-asset-downloader img/banner         # Download a specific image');
+  console.log('  figma-asset-downloader icon/home img/logo # Download multiple components');
+  console.log('  figma-asset-downloader --all              # Download all components');
+  process.exit(0);
+}
 
 /**
  * Load configuration from YAML file
@@ -119,12 +139,17 @@ async function fetchComponents(fileId, componentNames) {
     // Extract components from the file
     const allComponents = extractComponents(fileData);
     
-    // Filter components by name if componentNames are provided
+    // Filter components by name if componentNames are provided and --all flag is not set
     let filteredComponents = allComponents;
     if (componentNames && componentNames.length > 0) {
       filteredComponents = allComponents.filter(component => {
         return componentNames.some(name => component.name.includes(name));
       });
+    } else if (!downloadAll) {
+      // This case should not happen due to the help message check at the beginning,
+      // but we'll keep it as a safeguard
+      spinner.fail('No component names provided. Use --all flag to download all components.');
+      process.exit(1);
     }
     
     if (filteredComponents.length === 0) {

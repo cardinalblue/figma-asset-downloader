@@ -87,6 +87,12 @@ Run the tool with component names to download:
 node src/index.js ComponentName1 ComponentName2
 ```
 
+You can also use the `--all` flag to download all components from your Figma file:
+
+```bash
+node src/index.js --all
+```
+
 ### Examples
 
 Download a single icon:
@@ -99,6 +105,12 @@ Download multiple assets:
 
 ```bash
 node src/index.js icon/home icon/settings img/banner img/profile
+```
+
+Download all components from the Figma file:
+
+```bash
+node src/index.js --all
 ```
 
 ## How It Works
