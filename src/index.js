@@ -26,6 +26,7 @@ require('dotenv').config();
 const API_BASE_URL = 'https://api.figma.com/v1';
 const CONFIG_PATH = '.figma/asset_download.yaml';
 const DPI_SCALES = {
+  ldpi: 0.75,
   mdpi: 1,
   hdpi: 1.5,
   xhdpi: 2,
