@@ -288,8 +288,8 @@ async function optimizeSvg(svgContent) {
           name: 'preset-default',
           params: {
             overrides: {
-              removeViewBox: false,
-              cleanupIDs: false
+              cleanupIds: false,
+              removeViewBox: false
             }
           }
         }
