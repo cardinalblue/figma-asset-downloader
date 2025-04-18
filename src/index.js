@@ -54,7 +54,7 @@ const figmaApi = axios.create({
 
 // Set up command line options
 program
-  .version('1.0.0')
+  .version('1.0.1')
   .description('Download and convert Figma assets for Android projects')
   .argument('[componentNames...]', 'Component names to download (e.g., icon/home img/banner)')
   .option('-a, --all', 'Download all components')
