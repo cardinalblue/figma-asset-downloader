@@ -57,11 +57,29 @@ The tool uses these prefixes to determine whether to process the component as an
 
 ## Usage
 
-Set your Figma API token as an environment variable:
+Set your Figma API token as an environment variable using one of these methods:
+
+### Method 1: Terminal Environment Variable
 
 ```bash
 export FIGMA_TOKEN=your_figma_api_token
 ```
+
+### Method 2: Using a .env File
+
+Create a `.env` file in the directory from which you run the command:
+
+```
+FIGMA_TOKEN=your_figma_api_token
+```
+
+Important notes about the `.env` file:
+
+- The tool looks for the `.env` file in the current working directory (the directory from which you run the command), not necessarily the project root
+- This works with `npx` too - if you run `npx figma-asset-downloader` from a directory containing a `.env` file, it will use the token from that file
+- If both a system-wide environment variable (e.g., from `.zprofile` or `.bashrc`) and a `.env` file exist, the `.env` file takes precedence
+
+The tool automatically loads the token from this file using the dotenv package.
 
 Run the tool with component names to download:
 
