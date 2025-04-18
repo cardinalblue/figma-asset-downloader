@@ -216,12 +216,14 @@ function traverseNode(node, callback, path = [], depth = 0) {
 /**
  * Get image URLs for components
  */
-async function getImageUrls(fileId, components, format = 'svg') {
+async function getImageUrls(fileId, components, format = 'svg', scale = 1) {
   const spinner = ora('Getting image URLs from Figma...').start();
   
   try {
     const componentIds = components.map(component => component.id).join(',');
-    const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}`);
+    // Request the highest scale (4x) for images to ensure high quality
+    const scaleParam = format === 'png' ? 4 : scale;
+    const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}&scale=${scaleParam}`);
     
     if (!response.data.images) {
       spinner.fail('No image URLs returned from Figma API');
@@ -352,9 +354,13 @@ async function processImageForDpi(imageBuffer, dpi, format, quality, scale) {
     const originalWidth = metadata.width;
     const originalHeight = metadata.height;
     
-    // Calculate new dimensions based on scale factor
-    const newWidth = Math.round(originalWidth * scale);
-    const newHeight = Math.round(originalHeight * scale);
+    // Since we're downloading at 4x (xxxhdpi), calculate the relative scale
+    // For example, if we want hdpi (1.5x), we need to scale to 1.5/4 = 0.375 of the original
+    const relativeScale = scale / DPI_SCALES.xxxhdpi;
+    
+    // Calculate new dimensions based on relative scale
+    const newWidth = Math.round(originalWidth * relativeScale);
+    const newHeight = Math.round(originalHeight * relativeScale);
     
     let sharpInstance = sharp(imageBuffer)
       .resize({
