@@ -347,11 +347,20 @@ async function downloadImage(url) {
  */
 async function processImageForDpi(imageBuffer, dpi, format, quality, scale) {
   try {
+    // Get the metadata to determine original dimensions
+    const metadata = await sharp(imageBuffer).metadata();
+    const originalWidth = metadata.width;
+    const originalHeight = metadata.height;
+    
+    // Calculate new dimensions based on scale factor
+    const newWidth = Math.round(originalWidth * scale);
+    const newHeight = Math.round(originalHeight * scale);
+    
     let sharpInstance = sharp(imageBuffer)
-      .resize({ 
-        width: Math.round(scale * 100) / 100, 
-        height: Math.round(scale * 100) / 100, 
-        fit: 'contain' 
+      .resize({
+        width: newWidth,
+        height: newHeight,
+        fit: 'contain'
       });
     
     if (format === 'webp') {
