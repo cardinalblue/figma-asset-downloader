@@ -130,15 +130,15 @@ function loadConfig() {
  */
 async function fetchComponents(fileId, componentNames) {
   const spinner = ora('Fetching components from Figma...').start();
-  
+
   try {
     // Get the file data from Figma API
     const response = await figmaApi.get(`/files/${fileId}`);
     const fileData = response.data;
-    
+
     // Extract components from the file
     const allComponents = extractComponents(fileData);
-    
+
     // Filter components by name if componentNames are provided and --all flag is not set
     let filteredComponents = allComponents;
     if (componentNames && componentNames.length > 0) {
@@ -151,12 +151,12 @@ async function fetchComponents(fileId, componentNames) {
       spinner.fail('No component names provided. Use --all flag to download all components.');
       process.exit(1);
     }
-    
+
     if (filteredComponents.length === 0) {
       spinner.fail('No components found matching the provided names');
       process.exit(1);
     }
-    
+
     spinner.succeed(`Found ${filteredComponents.length} components`);
     return filteredComponents;
   } catch (error) {
@@ -172,7 +172,7 @@ async function fetchComponents(fileId, componentNames) {
 function extractComponents(fileData) {
   const components = [];
   const componentSets = new Map();
-  
+
   // First pass: collect component sets
   traverseNode(fileData.document, (node, path) => {
     if (node.type === 'COMPONENT_SET') {
@@ -182,7 +182,7 @@ function extractComponents(fileData) {
       });
     }
   });
-  
+
   // Second pass: collect components
   traverseNode(fileData.document, (node, path) => {
     if (node.type === 'COMPONENT') {
@@ -198,7 +198,7 @@ function extractComponents(fileData) {
           };
         }
       }
-      
+
       components.push({
         id: node.id,
         name: node.name,
@@ -212,7 +212,7 @@ function extractComponents(fileData) {
       });
     }
   });
-  
+
   return components;
 }
 
@@ -224,12 +224,12 @@ function traverseNode(node, callback, path = [], depth = 0) {
   if (!node.name || node.name.startsWith('#')) {
     return;
   }
-  
+
   const currentPath = [...path, node.name];
-  
+
   // Call the callback for this node
   callback(node, currentPath, depth);
-  
+
   // Recursively process children
   if (node.children) {
     for (const child of node.children) {
@@ -243,18 +243,18 @@ function traverseNode(node, callback, path = [], depth = 0) {
  */
 async function getImageUrls(fileId, components, format = 'svg', scale = 1) {
   const spinner = ora('Getting image URLs from Figma...').start();
-  
+
   try {
     const componentIds = components.map(component => component.id).join(',');
     // Request the highest scale (4x) for images to ensure high quality
     const scaleParam = format === 'png' ? 4 : scale;
     const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}&scale=${scaleParam}`);
-    
+
     if (!response.data.images) {
       spinner.fail('No image URLs returned from Figma API');
       process.exit(1);
     }
-    
+
     spinner.succeed('Successfully retrieved image URLs');
     return response.data.images;
   } catch (error) {
@@ -311,48 +311,12 @@ async function convertSvgToXml(svgContent) {
       xmlTag: true,
       fillBlack: false
     };
-    
+
     const xmlContent = await svg2vectordrawable(svgContent, options);
     return xmlContent;
   } catch (error) {
     console.error(chalk.red(`Error converting SVG to XML: ${error.message}`));
     throw error;
-  }
-}
-
-/**
- * Download and process an icon component
- */
-async function processIconComponent(component, imageUrl, config) {
-  const spinner = ora(`Processing icon: ${component.name}`).start();
-  
-  try {
-    // Extract the icon name from the component name (remove 'icon/' prefix)
-    const iconName = component.name.replace('icon/', '');
-    const sanitizedName = iconName.replace(/\s+/g, '_').toLowerCase();
-    const fileName = `ic_${sanitizedName}.xml`;
-    
-    // Create the drawable directory if it doesn't exist
-    const drawablePath = path.join(config.icons.path, 'drawable');
-    await fs.ensureDir(drawablePath);
-    
-    // Download the SVG
-    const svgContent = await downloadSvg(imageUrl);
-    
-    // Optimize the SVG
-    const optimizedSvg = await optimizeSvg(svgContent);
-    
-    // Convert SVG to Android vector drawable XML
-    const xmlContent = await convertSvgToXml(optimizedSvg);
-    
-    // Save the XML file
-    const filePath = path.join(drawablePath, fileName);
-    await fs.writeFile(filePath, xmlContent, 'utf8');
-    
-    spinner.succeed(`Icon saved: ${filePath}`);
-  } catch (error) {
-    spinner.fail(`Failed to process icon: ${component.name}`);
-    console.error(chalk.red(error.message));
   }
 }
 
@@ -378,22 +342,22 @@ async function processImageForDpi(imageBuffer, dpi, format, quality, scale) {
     const metadata = await sharp(imageBuffer).metadata();
     const originalWidth = metadata.width;
     const originalHeight = metadata.height;
-    
+
     // Since we're downloading at 4x (xxxhdpi), calculate the relative scale
     // For example, if we want hdpi (1.5x), we need to scale to 1.5/4 = 0.375 of the original
     const relativeScale = scale / DPI_SCALES.xxxhdpi;
-    
+
     // Calculate new dimensions based on relative scale
     const newWidth = Math.round(originalWidth * relativeScale);
     const newHeight = Math.round(originalHeight * relativeScale);
-    
+
     let sharpInstance = sharp(imageBuffer)
       .resize({
         width: newWidth,
         height: newHeight,
         fit: 'contain'
       });
-    
+
     if (format === 'webp') {
       return await sharpInstance.webp({ quality }).toBuffer();
     } else {
@@ -406,55 +370,6 @@ async function processImageForDpi(imageBuffer, dpi, format, quality, scale) {
 }
 
 /**
- * Download and process an image component
- */
-async function processImageComponent(component, imageUrl, config) {
-  const spinner = ora(`Processing image: ${component.name}`).start();
-  
-  try {
-    // Extract the image name from the component name (remove 'img/' prefix)
-    const imageName = component.name.replace('img/', '');
-    const sanitizedName = imageName.replace(/\s+/g, '_').toLowerCase();
-    const fileNameBase = `img_${sanitizedName}`;
-    
-    // Download the image
-    const imageBuffer = await downloadImage(imageUrl);
-    
-    // Get the list of DPIs to process (exclude any in skipDpi)
-    const dpisToProcess = Object.keys(DPI_SCALES).filter(dpi => 
-      !config.images.skipDpi || !config.images.skipDpi.includes(dpi)
-    );
-    
-    // Process for each DPI
-    for (const dpi of dpisToProcess) {
-      const scale = DPI_SCALES[dpi];
-      const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
-      await fs.ensureDir(drawablePath);
-      
-      const fileName = `${fileNameBase}.${config.images.format}`;
-      const filePath = path.join(drawablePath, fileName);
-      
-      // Process the image for this DPI
-      const processedImage = await processImageForDpi(
-        imageBuffer, 
-        dpi, 
-        config.images.format, 
-        config.images.quality, 
-        scale
-      );
-      
-      // Save the processed image
-      await fs.writeFile(filePath, processedImage);
-    }
-    
-    spinner.succeed(`Image saved for ${dpisToProcess.length} DPI variants`);
-  } catch (error) {
-    spinner.fail(`Failed to process image: ${component.name}`);
-    console.error(chalk.red(error.message));
-  }
-}
-
-/**
  * Handle API errors
  */
 function handleApiError(error) {
@@ -463,7 +378,7 @@ function handleApiError(error) {
     // that falls out of the range of 2xx
     console.error(chalk.red(`Status: ${error.response.status}`));
     console.error(chalk.red(`Message: ${JSON.stringify(error.response.data)}`));
-    
+
     if (error.response.status === 403) {
       console.error(chalk.yellow('This might be due to an invalid Figma token or insufficient permissions.'));
     } else if (error.response.status === 404) {
@@ -486,53 +401,131 @@ function handleApiError(error) {
 async function main() {
   console.log(chalk.blue('Figma Asset Downloader'));
   console.log(chalk.blue('======================'));
-  
+
   try {
     // Load configuration
     const config = loadConfig();
     console.log(chalk.green(`Loaded configuration for file: ${config.fileId}`));
-    
+
     // Fetch components
     const components = await fetchComponents(config.fileId, componentNames);
-    
+
     // Process icons (components with names starting with "icon/")
     const iconComponents = components.filter(component => component.name.startsWith('icon/'));
     if (iconComponents.length > 0) {
       console.log(chalk.yellow(`\nProcessing ${iconComponents.length} icons...`));
-      
+
       // Get SVG URLs for icons
       const iconUrls = await getImageUrls(config.fileId, iconComponents, 'svg');
-      
+
       // Process each icon
+      let iconCounter = 0;
+      const totalIcons = iconComponents.length;
       for (const component of iconComponents) {
+        iconCounter++;
         const imageUrl = iconUrls[component.id];
         if (imageUrl) {
-          await processIconComponent(component, imageUrl, config);
+          // Update the spinner message to include progress
+          const spinner = ora(`Processing icon (${iconCounter}/${totalIcons}): ${component.name}`).start();
+          try {
+            // Extract the icon name from the component name (remove 'icon/' prefix)
+            const iconName = component.name.replace('icon/', '');
+            const sanitizedName = iconName.replace(/\s+/g, '_').toLowerCase();
+            const fileName = `ic_${sanitizedName}.xml`;
+
+            // Create the drawable directory if it doesn't exist
+            const drawablePath = path.join(config.icons.path, 'drawable');
+            await fs.ensureDir(drawablePath);
+
+            // Download the SVG
+            const svgContent = await downloadSvg(imageUrl);
+
+            // Optimize the SVG
+            const optimizedSvg = await optimizeSvg(svgContent);
+
+            // Convert SVG to Android vector drawable XML
+            const xmlContent = await convertSvgToXml(optimizedSvg);
+
+            // Save the XML file
+            const filePath = path.join(drawablePath, fileName);
+            await fs.writeFile(filePath, xmlContent, 'utf8');
+
+            spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${filePath}`);
+          } catch (error) {
+            spinner.fail(`Failed to process icon (${iconCounter}/${totalIcons}): ${component.name}`);
+            console.error(chalk.red(error.message));
+          }
         } else {
-          console.error(chalk.red(`No image URL found for icon: ${component.name}`));
+          console.error(chalk.red(`No image URL found for icon (${iconCounter}/${totalIcons}): ${component.name}`));
         }
       }
     }
-    
+
     // Process images (components with names starting with "img/")
     const imageComponents = components.filter(component => component.name.startsWith('img/'));
     if (imageComponents.length > 0) {
       console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
-      
+
       // Get PNG URLs for images (we'll convert to webp if needed)
       const imageUrls = await getImageUrls(config.fileId, imageComponents, 'png');
-      
+
       // Process each image
+      let imageCounter = 0;
+      const totalImages = imageComponents.length;
       for (const component of imageComponents) {
+        imageCounter++;
         const imageUrl = imageUrls[component.id];
         if (imageUrl) {
-          await processImageComponent(component, imageUrl, config);
+          // Update the spinner message to include progress
+          const spinner = ora(`Processing image (${imageCounter}/${totalImages}): ${component.name}`).start();
+
+          try {
+            // Extract the image name from the component name (remove 'img/' prefix)
+            const imageName = component.name.replace('img/', '');
+            const sanitizedName = imageName.replace(/\s+/g, '_').toLowerCase();
+            const fileNameBase = `img_${sanitizedName}`;
+
+            // Download the image
+            const imageBuffer = await downloadImage(imageUrl);
+
+            // Get the list of DPIs to process (exclude any in skipDpi)
+            const dpisToProcess = Object.keys(DPI_SCALES).filter(dpi => 
+              !config.images.skipDpi || !config.images.skipDpi.includes(dpi)
+            );
+
+            // Process for each DPI
+            for (const dpi of dpisToProcess) {
+              const scale = DPI_SCALES[dpi];
+              const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
+              await fs.ensureDir(drawablePath);
+
+              const fileName = `${fileNameBase}.${config.images.format}`;
+              const filePath = path.join(drawablePath, fileName);
+
+              // Process the image for this DPI
+              const processedImage = await processImageForDpi(
+                imageBuffer, 
+                dpi, 
+                config.images.format, 
+                config.images.quality, 
+                scale
+              );
+
+              // Save the processed image
+              await fs.writeFile(filePath, processedImage);
+            }
+
+            spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase} (${dpisToProcess.length} DPI variants)`);
+          } catch (error) {
+            spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
+            console.error(chalk.red(error.message));
+          }
         } else {
-          console.error(chalk.red(`No image URL found for image: ${component.name}`));
+          console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}): ${component.name}`));
         }
       }
     }
-    
+
     console.log(chalk.green('\nAsset download and processing complete!'));
   } catch (error) {
     console.error(chalk.red('An error occurred:'), error.message);
