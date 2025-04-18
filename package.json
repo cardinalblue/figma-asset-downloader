@@ -17,7 +17,7 @@
     "icons",
     "images"
   ],
-  "author": "",
+  "author": "Cardinalblue Software",
   "license": "MIT",
   "dependencies": {
     "axios": "^1.6.2",
