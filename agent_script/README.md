@@ -186,8 +186,9 @@ All files are saved to the `downloads` directory within the script folder.
 
 Potential future enhancements for this tool:
 
-- Support for SVG export
 - Export component styles and properties as CSS or JSON
 - Interactive mode with more filtering options
 - Support for multiple Figma files
 - Batch download with custom naming templates
+
+**Note:** SVG export and Android vector drawable conversion have been implemented in the main project. See the root README.md for more information.
