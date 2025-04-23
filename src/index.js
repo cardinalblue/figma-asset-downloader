@@ -150,9 +150,50 @@ async function fetchComponents(fileId, componentNames) {
     // Filter components by name if componentNames are provided and --all flag is not set
     let filteredComponents = allComponents;
     if (componentNames && componentNames.length > 0) {
-      filteredComponents = allComponents.filter(component => {
-        return componentNames.some(name => component.name.includes(name));
+      // Check for duplicate component names
+      const nameMap = new Map();
+      const duplicates = new Map();
+
+      // First, find all exact matches and identify duplicates
+      componentNames.forEach(requestedName => {
+        const exactMatches = allComponents.filter(component => component.name === requestedName);
+
+        if (exactMatches.length > 1) {
+          // Store duplicates for error reporting
+          duplicates.set(requestedName, exactMatches);
+        } else if (exactMatches.length === 1) {
+          // Store single matches
+          nameMap.set(requestedName, exactMatches[0]);
+        }
       });
+
+      // Handle duplicates if any
+      if (duplicates.size > 0) {
+        spinner.fail('Found duplicate components with the same name');
+
+        duplicates.forEach((components, name) => {
+          console.error(chalk.red(`Error: Multiple components found with the exact name "${name}"`));
+          console.error(chalk.red(`Cannot download because of ambiguity. Please rename components to be unique.`));
+
+          // Print links to the Figma file with the duplicated components focused
+          console.log(chalk.yellow('\nLinks to duplicated components:'));
+          components.forEach((component, index) => {
+            const figmaLink = `https://www.figma.com/file/${fileId}?node-id=${encodeURIComponent(component.id)}`;
+            console.log(chalk.cyan(`${index + 1}. ${component.path} - ${figmaLink}`));
+          });
+        });
+
+        process.exit(1);
+      }
+
+      // Filter to only include exact matches
+      filteredComponents = Array.from(nameMap.values());
+
+      // Check if any requested components were not found
+      const notFound = componentNames.filter(name => !nameMap.has(name));
+      if (notFound.length > 0) {
+        console.log(chalk.yellow(`Warning: The following components were not found: ${notFound.join(', ')}`));
+      }
     } else if (!downloadAll) {
       // This case should not happen due to the help message check at the beginning,
       // but we'll keep it as a safeguard
@@ -161,11 +202,11 @@ async function fetchComponents(fileId, componentNames) {
     }
 
     if (filteredComponents.length === 0) {
-      spinner.fail('No components found matching the provided names');
+      spinner.fail('No components found matching the provided names exactly');
       process.exit(1);
     }
 
-    spinner.succeed(`Found ${filteredComponents.length} components`);
+    spinner.succeed(`Found ${filteredComponents.length} components with exact name matches`);
     return filteredComponents;
   } catch (error) {
     spinner.fail('Error fetching components from Figma');
