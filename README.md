@@ -30,7 +30,9 @@ npm install @piccollage/figma-asset-downloader
 
 ## Configuration
 
-Create a configuration file at `.figma/asset_download.yaml` in your project directory. An example configuration file is provided in the repository root as `figma-asset-downloader.config.yaml`.
+Create a configuration file at `.figma/figma-asset-downloader.config.yaml` in your project directory. An example configuration file is provided in the repository root as `figma-asset-downloader.config.yaml`.
+
+For backward compatibility, the tool will also look for the configuration file in the root directory (`figma-asset-downloader.config.yaml`) if it's not found in the `.figma` folder.
 
 ### Configuration Options
 
@@ -179,7 +181,7 @@ figma-asset-downloader --find-duplicate
 
 ## How It Works
 
-1. The tool reads the configuration from `.figma/asset_download.yaml`
+1. The tool reads the configuration from `.figma/figma-asset-downloader.config.yaml` (or falls back to `figma-asset-downloader.config.yaml` in the root directory if the first one doesn't exist)
 2. It connects to the Figma API using your FIGMA_TOKEN
 3. It fetches components from the specified Figma file (and optionally from a specific page)
 4. For each specified component:
@@ -245,7 +247,7 @@ Note: DPI folders specified in the `skipDpi` configuration will not be created.
    - Make sure you've set the FIGMA_TOKEN environment variable or included it in a .env file
 
 2. **Error: Configuration file not found**
-   - Ensure you have a configuration file at `.figma/asset_download.yaml`
+   - Ensure you have a configuration file at `.figma/figma-asset-downloader.config.yaml` or `figma-asset-downloader.config.yaml` in the root directory
    - You can copy the example from `figma-asset-downloader.config.yaml` as a starting point
 
 3. **No components found matching the provided names**

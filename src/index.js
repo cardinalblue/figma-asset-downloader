@@ -24,7 +24,8 @@ require('dotenv').config();
 
 // Constants
 const API_BASE_URL = 'https://api.figma.com/v1';
-const CONFIG_PATH = '.figma/asset_download.yaml';
+const NEW_CONFIG_PATH = '.figma/figma-asset-downloader.config.yaml';
+const OLD_CONFIG_PATH = '.figma/asset_download.yaml';
 const DPI_SCALES = {
   ldpi: 0.75,
   mdpi: 1,
@@ -155,13 +156,28 @@ async function findDuplicateComponents(fileId, pageId = '') {
  */
 function loadConfig() {
   try {
-    if (!fs.existsSync(CONFIG_PATH)) {
-      console.error(chalk.red(`Error: Configuration file not found at ${CONFIG_PATH}`));
+    let configPath;
+    let configFile;
+
+    // First try to read from the new path (.figma/figma-asset-downloader.config.yaml)
+    if (fs.existsSync(NEW_CONFIG_PATH)) {
+      configPath = NEW_CONFIG_PATH;
+      configFile = fs.readFileSync(NEW_CONFIG_PATH, 'utf8');
+      console.log(chalk.green(`Using configuration file from: ${NEW_CONFIG_PATH}`));
+    }
+    // If not found, try the old path (.figma/asset_download.yaml)
+    else if (fs.existsSync(OLD_CONFIG_PATH)) {
+      configPath = OLD_CONFIG_PATH;
+      configFile = fs.readFileSync(OLD_CONFIG_PATH, 'utf8');
+      console.log(chalk.green(`Using configuration file from: ${OLD_CONFIG_PATH}`));
+    }
+    // If neither exists, show error
+    else {
+      console.error(chalk.red(`Error: Configuration file not found at ${NEW_CONFIG_PATH} or ${OLD_CONFIG_PATH}`));
       console.log('Please create a configuration file as described in the README');
       process.exit(1);
     }
 
-    const configFile = fs.readFileSync(CONFIG_PATH, 'utf8');
     const config = yaml.load(configFile);
 
     // Validate required configuration
