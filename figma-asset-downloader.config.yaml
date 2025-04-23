@@ -1,0 +1,47 @@
+# Figma Asset Downloader Configuration Example
+
+# Required: Figma file ID to download assets from
+# You can find this in the URL of your Figma file: https://www.figma.com/file/XXXXXXXXXXXXXXXX/
+fileId: "YOUR_FIGMA_FILE_ID"
+
+# Optional: Figma page ID to restrict component search to a specific page
+# You can find this in the URL when you have a page selected: https://www.figma.com/file/XXXX/FileName?node-id=YYYY%3AZZZZ
+# where YYYY is the page ID
+# Leave empty or comment it out to search the entire file (all pages)
+pageId: "YOUR_PAGE_ID"  # Optional - remove or leave empty to search all pages
+
+# Configuration for icon assets (SVG -> Android Vector Drawable)
+icons:
+  # Path where icon assets will be saved (default: 'res')
+  # The tool will create a 'drawable' subdirectory in this path
+  path: "app/src/main/res"
+  
+  # Prefix for icon filenames (default: 'ic_')
+  # For example, icon/home_tab on figma will be downloaded as ic_home_tab.xml
+  prefix: "ic_"
+
+# Configuration for image assets (PNG -> WebP/PNG for different DPIs)
+images:
+  # Path where image assets will be saved (default: 'res')
+  # The tool will create 'drawable-mdpi', 'drawable-hdpi', etc. subdirectories
+  path: "app/src/main/res"
+  
+  # Image format: 'webp' or 'png' (default: 'webp')
+  format: "webp"
+  
+  # Image quality: 1-100 (default: 90)
+  quality: 90
+  
+  # Prefix for image filenames (default: 'img_')
+  # For example, img/vip_banner on figma will be downloaded as img_vip_banner.webp
+  prefix: "img_"
+  
+  # Optional: Skip specific DPI variants
+  # Available DPIs: ldpi, mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi
+  skipDpi:
+    - "ldpi"  # Uncomment to skip ldpi
+    # - "mdpi"  # Uncomment to skip mdpi
+    # - "hdpi"  # Uncomment to skip hdpi
+    # - "xhdpi"  # Uncomment to skip xhdpi
+    # - "xxhdpi"  # Uncomment to skip xxhdpi
+    # - "xxxhdpi"  # Uncomment to skip xxxhdpi
