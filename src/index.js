@@ -58,19 +58,22 @@ program
   .description('Download and convert Figma assets for Android projects')
   .argument('[componentNames...]', 'Component names to download (e.g., icon/home img/banner)')
   .option('-a, --all', 'Download all components')
+  .option('-f, --find-duplicate', 'Find and list all duplicate components')
   .parse(process.argv);
 
 const componentNames = program.args;
 const downloadAll = program.opts().all;
+const findDuplicate = program.opts().findDuplicate;
 
-// Show help message if no component names are provided and --all flag is not set
-if (componentNames.length === 0 && !downloadAll) {
+// Show help message if no component names are provided and neither --all nor --find-duplicate flags are set
+if (componentNames.length === 0 && !downloadAll && !findDuplicate) {
   console.log(chalk.blue('Figma Asset Downloader'));
   console.log(chalk.blue('======================'));
   console.log('\nUsage:');
   console.log('  figma-asset-downloader [options] [componentNames...]');
   console.log('\nOptions:');
   console.log('  -a, --all                Download all components');
+  console.log('  -f, --find-duplicate     Find and list all duplicate components');
   console.log('  -V, --version            Output the version number');
   console.log('  -h, --help               Display help for command');
   console.log('\nExamples:');
@@ -78,7 +81,73 @@ if (componentNames.length === 0 && !downloadAll) {
   console.log('  figma-asset-downloader img/banner         # Download a specific image');
   console.log('  figma-asset-downloader icon/home img/logo # Download multiple components');
   console.log('  figma-asset-downloader --all              # Download all components');
+  console.log('  figma-asset-downloader --find-duplicate   # Find and list all duplicate components');
   process.exit(0);
+}
+
+/**
+ * Find and report duplicate components
+ */
+async function findDuplicateComponents(fileId, pageId = '') {
+  const spinner = ora('Fetching components from Figma to find duplicates...').start();
+
+  try {
+    // Get the file data from Figma API
+    const response = await figmaApi.get(`/files/${fileId}`);
+    const fileData = response.data;
+
+    // Extract all components, filtered by page ID if provided
+    const allComponents = extractComponents(fileData, pageId);
+    
+    // Filter to only include icon/ and img/ components
+    const relevantComponents = allComponents.filter(component =>
+      component.name.startsWith('icon/') || component.name.startsWith('img/')
+    );
+    
+    spinner.succeed(`Found ${relevantComponents.length} icon and image components`);
+    
+    // Group components by name to find duplicates
+    const componentsByName = new Map();
+    relevantComponents.forEach(component => {
+      if (!componentsByName.has(component.name)) {
+        componentsByName.set(component.name, []);
+      }
+      componentsByName.get(component.name).push(component);
+    });
+    
+    // Filter to only include names with multiple components (duplicates)
+    const duplicates = new Map();
+    componentsByName.forEach((components, name) => {
+      if (components.length > 1) {
+        duplicates.set(name, components);
+      }
+    });
+    
+    // Report results
+    if (duplicates.size === 0) {
+      console.log(chalk.green('\nNo duplicate components found!'));
+    } else {
+      console.log(chalk.red(`\nFound ${duplicates.size} component names with duplicates:`));
+      
+      duplicates.forEach((components, name) => {
+        console.log(chalk.red(`\n${name} (${components.length} duplicates):`));
+        
+        // Print links to the Figma file with the duplicated components focused
+        components.forEach((component, index) => {
+          const figmaLink = `https://www.figma.com/file/${fileId}?node-id=${encodeURIComponent(component.id)}`;
+          console.log(chalk.cyan(`  ${index + 1}. ${component.path} - ${figmaLink}`));
+        });
+      });
+      
+      console.log(chalk.yellow('\nPlease rename these components to ensure they have unique names.'));
+    }
+    
+    return duplicates.size > 0;
+  } catch (error) {
+    spinner.fail('Error fetching components from Figma');
+    handleApiError(error);
+    process.exit(1);
+  }
 }
 
 /**
@@ -102,6 +171,10 @@ function loadConfig() {
     }
 
     // Set default values if not provided
+    if (!config.pageId) {
+      config.pageId = '';  // Empty string means search the entire file
+    }
+
     if (!config.icons) {
       config.icons = { path: 'res' };
     }
@@ -136,7 +209,7 @@ function loadConfig() {
 /**
  * Fetch components from Figma file
  */
-async function fetchComponents(fileId, componentNames) {
+async function fetchComponents(fileId, componentNames, pageId = '') {
   const spinner = ora('Fetching components from Figma...').start();
 
   try {
@@ -144,8 +217,8 @@ async function fetchComponents(fileId, componentNames) {
     const response = await figmaApi.get(`/files/${fileId}`);
     const fileData = response.data;
 
-    // Extract components from the file
-    const allComponents = extractComponents(fileData);
+    // Extract components from the file, filtered by page ID if provided
+    const allComponents = extractComponents(fileData, pageId);
 
     // Filter components by name if componentNames are provided and --all flag is not set
     let filteredComponents = allComponents;
@@ -218,12 +291,41 @@ async function fetchComponents(fileId, componentNames) {
 /**
  * Extract components from the Figma file data
  */
-function extractComponents(fileData) {
+function extractComponents(fileData, pageId = '') {
   const components = [];
   const componentSets = new Map();
+  
+  // Find the specific page if pageId is provided
+  let rootNode = fileData.document;
+  
+  if (pageId) {
+    // Find the page with the specified ID
+    const findPage = (node) => {
+      if (node.id === pageId) {
+        return node;
+      }
+      
+      if (node.children) {
+        for (const child of node.children) {
+          const found = findPage(child);
+          if (found) return found;
+        }
+      }
+      
+      return null;
+    };
+    
+    const page = findPage(rootNode);
+    if (page) {
+      rootNode = page;
+      console.log(chalk.green(`Found page with ID: ${pageId} (${page.name})`));
+    } else {
+      console.log(chalk.yellow(`Warning: Page with ID ${pageId} not found. Searching the entire file instead.`));
+    }
+  }
 
   // First pass: collect component sets
-  traverseNode(fileData.document, (node, path) => {
+  traverseNode(rootNode, (node, path) => {
     if (node.type === 'COMPONENT_SET') {
       componentSets.set(node.id, {
         node,
@@ -233,7 +335,7 @@ function extractComponents(fileData) {
   });
 
   // Second pass: collect components
-  traverseNode(fileData.document, (node, path) => {
+  traverseNode(rootNode, (node, path) => {
     if (node.type === 'COMPONENT') {
       // Check if this component is part of a component set
       let parentComponentSet = null;
@@ -456,8 +558,14 @@ async function main() {
     const config = loadConfig();
     console.log(chalk.green(`Loaded configuration for file: ${config.fileId}`));
 
+    // If --find-duplicate flag is set, find and report duplicate components
+    if (findDuplicate) {
+      await findDuplicateComponents(config.fileId, config.pageId);
+      return;
+    }
+
     // Fetch components
-    const components = await fetchComponents(config.fileId, componentNames);
+    const components = await fetchComponents(config.fileId, componentNames, config.pageId);
 
     // Process icons (components with names starting with "icon/")
     const iconComponents = components.filter(component => component.name.startsWith('icon/'));
