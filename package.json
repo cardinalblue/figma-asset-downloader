@@ -1,6 +1,6 @@
 {
   "name": "@piccollage/figma-asset-downloader",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "A Node.js tool for downloading and converting Figma assets for Android projects",
   "main": "src/index.js",
   "bin": {
