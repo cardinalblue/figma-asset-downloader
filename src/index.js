@@ -60,14 +60,16 @@ program
   .argument('[componentNames...]', 'Component names to download (e.g., icon/home img/banner)')
   .option('-a, --all', 'Download all components')
   .option('-f, --find-duplicate', 'Find and list all duplicate components')
+  .option('-s, --section <section>', 'Download components from a specific section')
   .parse(process.argv);
 
 const componentNames = program.args;
 const downloadAll = program.opts().all;
 const findDuplicate = program.opts().findDuplicate;
+const sectionName = program.opts().section;
 
 // Show help message if no component names are provided and neither --all nor --find-duplicate flags are set
-if (componentNames.length === 0 && !downloadAll && !findDuplicate) {
+if (componentNames.length === 0 && !downloadAll && !findDuplicate && !sectionName) {
   console.log(chalk.blue('Figma Asset Downloader'));
   console.log(chalk.blue('======================'));
   console.log('\nUsage:');
@@ -75,6 +77,7 @@ if (componentNames.length === 0 && !downloadAll && !findDuplicate) {
   console.log('\nOptions:');
   console.log('  -a, --all                Download all components');
   console.log('  -f, --find-duplicate     Find and list all duplicate components');
+  console.log('  -s, --section <section>  Download components from a specific section');
   console.log('  -V, --version            Output the version number');
   console.log('  -h, --help               Display help for command');
   console.log('\nExamples:');
@@ -83,6 +86,7 @@ if (componentNames.length === 0 && !downloadAll && !findDuplicate) {
   console.log('  figma-asset-downloader icon/home img/logo # Download multiple components');
   console.log('  figma-asset-downloader --all              # Download all components');
   console.log('  figma-asset-downloader --find-duplicate   # Find and list all duplicate components');
+  console.log('  figma-asset-downloader --section="Section Name" # Download components from a specific section');
   process.exit(0);
 }
 
@@ -99,14 +103,14 @@ async function findDuplicateComponents(fileId, pageId = '') {
 
     // Extract all components, filtered by page ID if provided
     const allComponents = extractComponents(fileData, pageId);
-    
+
     // Filter to only include icon/ and img/ components
     const relevantComponents = allComponents.filter(component =>
       component.name.startsWith('icon/') || component.name.startsWith('img/')
     );
-    
+
     spinner.succeed(`Found ${relevantComponents.length} icon and image components`);
-    
+
     // Group components by name to find duplicates
     const componentsByName = new Map();
     relevantComponents.forEach(component => {
@@ -115,7 +119,7 @@ async function findDuplicateComponents(fileId, pageId = '') {
       }
       componentsByName.get(component.name).push(component);
     });
-    
+
     // Filter to only include names with multiple components (duplicates)
     const duplicates = new Map();
     componentsByName.forEach((components, name) => {
@@ -123,26 +127,26 @@ async function findDuplicateComponents(fileId, pageId = '') {
         duplicates.set(name, components);
       }
     });
-    
+
     // Report results
     if (duplicates.size === 0) {
       console.log(chalk.green('\nNo duplicate components found!'));
     } else {
       console.log(chalk.red(`\nFound ${duplicates.size} component names with duplicates:`));
-      
+
       duplicates.forEach((components, name) => {
         console.log(chalk.red(`\n${name} (${components.length} duplicates):`));
-        
+
         // Print links to the Figma file with the duplicated components focused
         components.forEach((component, index) => {
           const figmaLink = `https://www.figma.com/file/${fileId}?node-id=${encodeURIComponent(component.id)}`;
           console.log(chalk.cyan(`  ${index + 1}. ${component.path} - ${figmaLink}`));
         });
       });
-      
+
       console.log(chalk.yellow('\nPlease rename these components to ensure they have unique names.'));
     }
-    
+
     return duplicates.size > 0;
   } catch (error) {
     spinner.fail('Error fetching components from Figma');
@@ -238,6 +242,22 @@ async function fetchComponents(fileId, componentNames, pageId = '') {
 
     // Filter components by name if componentNames are provided and --all flag is not set
     let filteredComponents = allComponents;
+
+    // Filter by section if section name is provided
+    if (sectionName) {
+      filteredComponents = allComponents.filter(component => {
+        // Check if the component path contains the section name
+        return component.path.includes(sectionName);
+      });
+
+      if (filteredComponents.length === 0) {
+        spinner.fail(`No components found in section: ${sectionName}`);
+        process.exit(1);
+      }
+
+      spinner.succeed(`Found ${filteredComponents.length} components in section: ${sectionName}`);
+    }
+
     if (componentNames && componentNames.length > 0) {
       // Check for duplicate component names
       const nameMap = new Map();
@@ -283,10 +303,10 @@ async function fetchComponents(fileId, componentNames, pageId = '') {
       if (notFound.length > 0) {
         console.log(chalk.yellow(`Warning: The following components were not found: ${notFound.join(', ')}`));
       }
-    } else if (!downloadAll) {
+    } else if (!downloadAll && !sectionName) {
       // This case should not happen due to the help message check at the beginning,
       // but we'll keep it as a safeguard
-      spinner.fail('No component names provided. Use --all flag to download all components.');
+      spinner.fail('No component names provided. Use --all flag to download all components or --section to specify a section.');
       process.exit(1);
     }
 
@@ -310,27 +330,27 @@ async function fetchComponents(fileId, componentNames, pageId = '') {
 function extractComponents(fileData, pageId = '') {
   const components = [];
   const componentSets = new Map();
-  
+
   // Find the specific page if pageId is provided
   let rootNode = fileData.document;
-  
+
   if (pageId) {
     // Find the page with the specified ID
     const findPage = (node) => {
       if (node.id === pageId) {
         return node;
       }
-      
+
       if (node.children) {
         for (const child of node.children) {
           const found = findPage(child);
           if (found) return found;
         }
       }
-      
+
       return null;
     };
-    
+
     const page = findPage(rootNode);
     if (page) {
       rootNode = page;

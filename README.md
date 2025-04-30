@@ -52,7 +52,7 @@ icons:
   # Export path for icons (path to the res folder, doesn't need to be named "res")
   # The tool will create a 'drawable' subdirectory in this path
   path: "app/src/main/res"
-  
+
   # Prefix for icon filenames (default: 'ic_')
   prefix: "ic_"
 
@@ -61,16 +61,16 @@ images:
   # Export path for images (can be different from icons path)
   # The tool will create 'drawable-mdpi', 'drawable-hdpi', etc. subdirectories
   path: "app/src/main/res"
-  
+
   # Image format (webp or png)
   format: "webp"  # or "png"
-  
+
   # Quality setting for compression (1-100)
   quality: 90
-  
+
   # Prefix for image filenames (default: 'img_')
   prefix: "img_"
-  
+
   # Optional: Array of DPI options to skip during export
   # Available DPIs: ldpi, mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi
   skipDpi:
@@ -150,6 +150,7 @@ node src/index.js [options] [componentNames...]
 - `[componentNames...]`: Names of components to download (e.g., icon/home, img/banner)
 - `-a, --all`: Download all components from the Figma file
 - `-f, --find-duplicate`: Find and list all duplicate components in the Figma file
+- `-s, --section <section>`: Download components from a specific section in the Figma file
 - `-V, --version`: Output the version number
 - `-h, --help`: Display help for command
 
@@ -179,12 +180,19 @@ Find duplicate components in your Figma file:
 figma-asset-downloader --find-duplicate
 ```
 
+Download all components from a specific section:
+
+```bash
+figma-asset-downloader --section="Section Name"
+```
+
 ## How It Works
 
 1. The tool reads the configuration from `.figma/figma-asset-downloader.config.yaml` (or falls back to `figma-asset-downloader.config.yaml` in the root directory if the first one doesn't exist)
 2. It connects to the Figma API using your FIGMA_TOKEN
 3. It fetches components from the specified Figma file (and optionally from a specific page)
-4. For each specified component:
+4. If a section is specified, it filters components to only include those from that section
+5. For each specified component:
    - If it's an icon (name starts with "icon/"):
      - Downloads as SVG
      - Optimizes the SVG using SVGO
@@ -253,7 +261,7 @@ Note: DPI folders specified in the `skipDpi` configuration will not be created.
 3. **No components found matching the provided names**
    - Check that your component names in Figma exactly match what you're providing in the command
    - Component names are case-sensitive
-   - Make sure the components exist in the specified page (if pageId is configured)
+   - Make sure the components exist in the specified page (if pageId is configured) or section (if --section is used)
 
 4. **Found duplicate components with the same name**
    - The tool requires unique component names to avoid ambiguity
