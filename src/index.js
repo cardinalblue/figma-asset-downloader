@@ -55,7 +55,7 @@ const figmaApi = axios.create({
 
 // Set up command line options
 program
-  .version('1.0.7')
+  .version('1.1.0')
   .description('Download and convert Figma assets for Android projects')
   .argument('[componentNames...]', 'Component names to download (e.g., icon/home img/banner)')
   .option('-a, --all', 'Download all components')
@@ -93,7 +93,7 @@ if (componentNames.length === 0 && !downloadAll && !findDuplicate && !sectionNam
 /**
  * Find and report duplicate components
  */
-async function findDuplicateComponents(fileId, pageId = '') {
+async function findDuplicateComponents(fileId, pageId = '', pageName = '') {
   const spinner = ora('Fetching components from Figma to find duplicates...').start();
 
   try {
@@ -101,8 +101,8 @@ async function findDuplicateComponents(fileId, pageId = '') {
     const response = await figmaApi.get(`/files/${fileId}`);
     const fileData = response.data;
 
-    // Extract all components, filtered by page ID if provided
-    const allComponents = extractComponents(fileData, pageId);
+    // Extract all components, filtered by page ID or page name if provided
+    const allComponents = extractComponents(fileData, pageId, pageName);
 
     // Filter to only include icon/ and img/ components
     const relevantComponents = allComponents.filter(component =>
@@ -191,8 +191,14 @@ function loadConfig() {
     }
 
     // Set default values if not provided
+    // pageId can be a string or an array of strings
     if (!config.pageId) {
       config.pageId = '';  // Empty string means search the entire file
+    }
+    
+    // pageName can be a string or an array of strings
+    if (!config.pageName) {
+      config.pageName = '';  // Empty string means search the entire file
     }
 
     if (!config.icons) {
@@ -229,7 +235,7 @@ function loadConfig() {
 /**
  * Fetch components from Figma file
  */
-async function fetchComponents(fileId, componentNames, pageId = '') {
+async function fetchComponents(fileId, componentNames, pageId = '', pageName = '') {
   const spinner = ora('Fetching components from Figma...').start();
 
   try {
@@ -237,8 +243,8 @@ async function fetchComponents(fileId, componentNames, pageId = '') {
     const response = await figmaApi.get(`/files/${fileId}`);
     const fileData = response.data;
 
-    // Extract components from the file, filtered by page ID if provided
-    const allComponents = extractComponents(fileData, pageId);
+    // Extract components from the file, filtered by page ID or page name if provided
+    const allComponents = extractComponents(fileData, pageId, pageName);
 
     // Filter components by name if componentNames are provided and --all flag is not set
     let filteredComponents = allComponents;
@@ -327,78 +333,106 @@ async function fetchComponents(fileId, componentNames, pageId = '') {
 /**
  * Extract components from the Figma file data
  */
-function extractComponents(fileData, pageId = '') {
+function extractComponents(fileData, pageId = '', pageName = '') {
   const components = [];
   const componentSets = new Map();
-
-  // Find the specific page if pageId is provided
+  
+  // Start with the document as the root node
   let rootNode = fileData.document;
-
-  if (pageId) {
-    // Find the page with the specified ID
-    const findPage = (node) => {
-      if (node.id === pageId) {
-        return node;
-      }
-
-      if (node.children) {
-        for (const child of node.children) {
-          const found = findPage(child);
-          if (found) return found;
+  let foundPages = [];
+  
+  // Convert pageId and pageName to arrays if they're strings
+  const pageIds = Array.isArray(pageId) ? pageId : (pageId ? [pageId] : []);
+  const pageNames = Array.isArray(pageName) ? pageName : (pageName ? [pageName] : []);
+  
+  // Only search for specific pages if pageIds or pageNames are provided
+  if (pageIds.length > 0 || pageNames.length > 0) {
+    // Find pages that match either the ID or name
+    const findPages = (node) => {
+      const matchedPages = [];
+      
+      // Check if this node is a page that matches our criteria
+      if (node.type === 'CANVAS') {
+        const idMatch = pageIds.includes(node.id);
+        const nameMatch = pageNames.includes(node.name);
+        
+        if (idMatch || nameMatch) {
+          matchedPages.push(node);
+          if (idMatch) {
+            console.log(chalk.green(`Found page with ID: ${node.id} (${node.name})`));
+          }
+          if (nameMatch) {
+            console.log(chalk.green(`Found page with name: ${node.name} (${node.id})`));
+          }
         }
       }
-
-      return null;
+      
+      // Recursively check children
+      if (node.children) {
+        for (const child of node.children) {
+          const childMatches = findPages(child);
+          matchedPages.push(...childMatches);
+        }
+      }
+      
+      return matchedPages;
     };
-
-    const page = findPage(rootNode);
-    if (page) {
-      rootNode = page;
-      console.log(chalk.green(`Found page with ID: ${pageId} (${page.name})`));
+    
+    foundPages = findPages(rootNode);
+    
+    if (foundPages.length > 0) {
+      console.log(chalk.green(`Found ${foundPages.length} matching pages`));
     } else {
-      console.log(chalk.yellow(`Warning: Page with ID ${pageId} not found. Searching the entire file instead.`));
+      console.log(chalk.yellow(`Warning: No pages found matching the specified criteria. Searching the entire file instead.`));
     }
   }
 
-  // First pass: collect component sets
-  traverseNode(rootNode, (node, path) => {
-    if (node.type === 'COMPONENT_SET') {
-      componentSets.set(node.id, {
-        node,
-        path
-      });
-    }
-  });
-
-  // Second pass: collect components
-  traverseNode(rootNode, (node, path) => {
-    if (node.type === 'COMPONENT') {
-      // Check if this component is part of a component set
-      let parentComponentSet = null;
-      if (node.componentSetId) {
-        const componentSetInfo = componentSets.get(node.componentSetId);
-        if (componentSetInfo) {
-          parentComponentSet = {
-            id: node.componentSetId,
-            name: componentSetInfo.node.name,
-            path: componentSetInfo.path
-          };
-        }
+  // Process each found page or the entire document if no pages were found
+  const nodesToProcess = foundPages.length > 0 ? foundPages : [rootNode];
+  
+  // First pass: collect component sets from all matching pages
+  for (const node of nodesToProcess) {
+    traverseNode(node, (node, path) => {
+      if (node.type === 'COMPONENT_SET') {
+        componentSets.set(node.id, {
+          node,
+          path
+        });
       }
+    });
+  }
 
-      components.push({
-        id: node.id,
-        name: node.name,
-        path: path.join(' / '),
-        type: node.type,
-        description: node.description || '',
-        width: node.absoluteBoundingBox ? node.absoluteBoundingBox.width : null,
-        height: node.absoluteBoundingBox ? node.absoluteBoundingBox.height : null,
-        componentSetId: node.componentSetId || null,
-        componentSet: parentComponentSet
-      });
-    }
-  });
+  // Second pass: collect components from all matching pages
+  for (const node of nodesToProcess) {
+    traverseNode(node, (node, path) => {
+      if (node.type === 'COMPONENT') {
+        // Check if this component is part of a component set
+        let parentComponentSet = null;
+        if (node.componentSetId) {
+          const componentSetInfo = componentSets.get(node.componentSetId);
+          if (componentSetInfo) {
+            parentComponentSet = {
+              id: node.componentSetId,
+              name: componentSetInfo.node.name,
+              path: componentSetInfo.path
+            };
+          }
+        }
+
+        components.push({
+          id: node.id,
+          name: node.name,
+          path: path.join(' / '),
+          type: node.type,
+          description: node.description || '',
+          width: node.absoluteBoundingBox ? node.absoluteBoundingBox.width : null,
+          height: node.absoluteBoundingBox ? node.absoluteBoundingBox.height : null,
+          componentSetId: node.componentSetId || null,
+          componentSet: parentComponentSet
+        });
+      }
+    });
+  }
 
   return components;
 }
@@ -596,12 +630,12 @@ async function main() {
 
     // If --find-duplicate flag is set, find and report duplicate components
     if (findDuplicate) {
-      await findDuplicateComponents(config.fileId, config.pageId);
+      await findDuplicateComponents(config.fileId, config.pageId, config.pageName);
       return;
     }
 
     // Fetch components
-    const components = await fetchComponents(config.fileId, componentNames, config.pageId);
+    const components = await fetchComponents(config.fileId, componentNames, config.pageId, config.pageName);
 
     // Process icons (components with names starting with "icon/")
     const iconComponents = components.filter(component => component.name.startsWith('icon/'));

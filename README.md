@@ -41,11 +41,24 @@ For backward compatibility, the tool will also look for the configuration file i
 # You can find this in the URL of your Figma file: https://www.figma.com/file/XXXXXXXXXXXXXXXX/
 fileId: "YOUR_FIGMA_FILE_ID"
 
-# Optional: Figma page ID to restrict component search to a specific page
+# Optional: Figma page ID to restrict component search to specific page(s)
 # You can find this in the URL when you have a page selected:
 # https://www.figma.com/file/XXXX/FileName?node-id=YYYY%3AZZZZ
 # where YYYY is the page ID
+# Can be a single string or an array of strings
 pageId: "YOUR_PAGE_ID"  # Optional - remove or leave empty to search all pages
+# Alternative format for multiple pages:
+# pageId:
+#   - "PAGE_ID_1"
+#   - "PAGE_ID_2"
+
+# Optional: Figma page name to restrict component search to specific page(s)
+# Can be a single string or an array of strings
+# pageName: "Icons"  # Optional - remove or leave empty to search all pages
+# Alternative format for multiple pages:
+# pageName:
+#   - "Icons"
+#   - "Images"
 
 # Icon configuration
 icons:
@@ -190,7 +203,7 @@ figma-asset-downloader --section="Section Name"
 
 1. The tool reads the configuration from `.figma/figma-asset-downloader.config.yaml` (or falls back to `figma-asset-downloader.config.yaml` in the root directory if the first one doesn't exist)
 2. It connects to the Figma API using your FIGMA_TOKEN
-3. It fetches components from the specified Figma file (and optionally from a specific page)
+3. It fetches components from the specified Figma file (and optionally from specific pages by ID or name)
 4. If a section is specified, it filters components to only include those from that section
 5. For each specified component:
    - If it's an icon (name starts with "icon/"):
