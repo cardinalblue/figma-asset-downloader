@@ -24,24 +24,34 @@ pageId: "YOUR_PAGE_ID"  # Optional - remove or leave empty to search all pages
 #   - "Icons"
 #   - "Images"
 
-# Configuration for icon assets (SVG -> Android Vector Drawable)
+# Required: Target platform for asset generation
+# Supported values: "android" or "ios"
+platform: "android"
+
+# Configuration for icon assets
 icons:
+  # Android: (SVG -> Android Vector Drawable)
   # Path where icon assets will be saved (default: 'res')
   # The tool will create a 'drawable' subdirectory in this path
   path: "app/src/main/res"
+  # path: "Assets.xcassets" # iOS
 
   # Prefix for icon filenames (default: 'ic_')
   # For example, icon/home_tab on figma will be downloaded as ic_home_tab.xml
   prefix: "ic_"
+  # prefix: "icon_" # iOS
 
-# Configuration for image assets (PNG -> WebP/PNG for different DPIs)
+# Configuration for image assets
 images:
+  # Android: (PNG -> WebP/PNG for different DPIs)
   # Path where image assets will be saved (default: 'res')
   # The tool will create 'drawable-mdpi', 'drawable-hdpi', etc. subdirectories
   path: "app/src/main/res"
+  # path: "Assets.xcassets" # iOS
 
   # Image format: 'webp' or 'png' (default: 'webp')
   format: "webp"
+  # format: "png" # iOS
 
   # Image quality: 1-100 (default: 90)
   quality: 90

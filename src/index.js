@@ -2,10 +2,10 @@
 
 /**
  * Figma Asset Downloader
- * 
- * A Node.js tool for downloading and converting Figma assets for Android projects.
- * This tool allows you to download icons as SVG and convert them to Android vector XML format,
- * as well as download images in different DPI resolutions.
+ *
+ * A Node.js tool for downloading and converting Figma assets for mobile projects.
+ * This tool allows you to download icons as SVG and convert them to Android vector XML format or iOS PDF format,
+ * as well as download images in different resolutions for both platforms.
  */
 
 // Import required dependencies
@@ -19,20 +19,27 @@ const ora = require('ora');
 const sharp = require('sharp');
 const svgo = require('svgo');
 const svg2vectordrawable = require('svg2vectordrawable');
-const { parse: parseSvg } = require('svgson');
 require('dotenv').config();
 
 // Constants
 const API_BASE_URL = 'https://api.figma.com/v1';
 const NEW_CONFIG_PATH = '.figma/figma-asset-downloader.config.yaml';
 const OLD_CONFIG_PATH = '.figma/asset_download.yaml';
-const DPI_SCALES = {
+
+// Platform-specific scales
+const ANDROID_DPI_SCALES = {
   ldpi: 0.75,
   mdpi: 1,
   hdpi: 1.5,
   xhdpi: 2,
   xxhdpi: 3,
   xxxhdpi: 4
+};
+
+const IOS_SCALES = {
+  '1x': 1,
+  '2x': 2,
+  '3x': 3
 };
 
 // Get Figma token from environment variable
@@ -56,7 +63,7 @@ const figmaApi = axios.create({
 // Set up command line options
 program
   .version('1.1.0')
-  .description('Download and convert Figma assets for Android projects')
+  .description('Download and convert Figma assets for mobile projects')
   .argument('[componentNames...]', 'Component names to download (e.g., icon/home img/banner)')
   .option('-a, --all', 'Download all components')
   .option('-f, --find-duplicate', 'Find and list all duplicate components')
@@ -81,11 +88,11 @@ if (componentNames.length === 0 && !downloadAll && !findDuplicate && !sectionNam
   console.log('  -V, --version            Output the version number');
   console.log('  -h, --help               Display help for command');
   console.log('\nExamples:');
-  console.log('  figma-asset-downloader icon/home          # Download a specific icon');
-  console.log('  figma-asset-downloader img/banner         # Download a specific image');
-  console.log('  figma-asset-downloader icon/home img/logo # Download multiple components');
-  console.log('  figma-asset-downloader --all              # Download all components');
-  console.log('  figma-asset-downloader --find-duplicate   # Find and list all duplicate components');
+  console.log('  figma-asset-downloader icon/home      # Download a specific icon');
+  console.log('  figma-asset-downloader img/banner     # Download a specific image');
+  console.log('  figma-asset-downloader icon/home img/logo    # Download multiple components');
+  console.log('  figma-asset-downloader --all                 # Download all components');
+  console.log('  figma-asset-downloader --find-duplicate      # Find and list all duplicate components');
   console.log('  figma-asset-downloader --section="Section Name" # Download components from a specific section');
   process.exit(0);
 }
@@ -160,7 +167,6 @@ async function findDuplicateComponents(fileId, pageId = '', pageName = '') {
  */
 function loadConfig() {
   try {
-    let configPath;
     let configFile;
 
     // First try to read from the new path (.figma/figma-asset-downloader.config.yaml)
@@ -190,6 +196,16 @@ function loadConfig() {
       process.exit(1);
     }
 
+    if (!config.platform) {
+      console.error(chalk.red('Error: platform is required in the configuration file'));
+      process.exit(1);
+    }
+
+    if (!['android', 'ios'].includes(config.platform)) {
+      console.error(chalk.red('Error: platform must be either "android" or "ios"'));
+      process.exit(1);
+    }
+
     // Set default values if not provided
     // pageId can be a string or an array of strings
     if (!config.pageId) {
@@ -201,28 +217,63 @@ function loadConfig() {
       config.pageName = '';  // Empty string means search the entire file
     }
 
-    if (!config.icons) {
-      config.icons = { path: 'res' };
-    }
+    // Set platform-specific defaults
+    if (config.platform === 'android') {
+      if (!config.icons) {
+        config.icons = { path: 'res' };
+      }
 
-    if (!config.icons.prefix) {
-      config.icons.prefix = 'ic_';
-    }
+      if (!config.icons.prefix) {
+        config.icons.prefix = 'ic_';
+      }
 
-    if (!config.images) {
-      config.images = { path: 'res', format: 'webp', quality: 90 };
-    }
+      if (!config.images) {
+        config.images = { path: 'res', format: 'webp', quality: 90 };
+      }
 
-    if (!config.images.format) {
-      config.images.format = 'webp';
-    }
+      if (!config.images.format) {
+        config.images.format = 'webp';
+      }
 
-    if (!config.images.quality) {
-      config.images.quality = 90;
-    }
+      if (!config.images.quality) {
+        config.images.quality = 90;
+      }
 
-    if (!config.images.prefix) {
-      config.images.prefix = 'img_';
+      if (!config.images.prefix) {
+        config.images.prefix = 'img_';
+      }
+    } else { // iOS
+      if (!config.icons) {
+        config.icons = {};
+      }
+
+      if (!config.icons.path) {
+        config.icons.path = 'Assets.xcassets';
+      }
+
+      if (!config.icons.prefix) {
+        config.icons.prefix = '';
+      }
+
+      if (!config.images) {
+        config.images = {};
+      }
+
+      if (!config.images.path) {
+        config.images.path = 'Assets.xcassets';
+      }
+
+      if (!config.images.format) {
+        config.images.format = 'png';
+      }
+
+      if (!config.images.quality) {
+        config.images.quality = 90;
+      }
+
+      if (!config.images.prefix) {
+        config.images.prefix = '';
+      }
     }
 
     return config;
@@ -462,13 +513,13 @@ function traverseNode(node, callback, path = [], depth = 0) {
 /**
  * Get image URLs for components
  */
-async function getImageUrls(fileId, components, format = 'svg', scale = 1) {
+async function getImageUrls(fileId, components, format = 'svg', scale = 1, platform) {
   const spinner = ora('Getting image URLs from Figma...').start();
 
   try {
     const componentIds = components.map(component => component.id).join(',');
-    // Request the highest scale (4x) for images to ensure high quality
-    const scaleParam = format === 'png' ? 4 : scale;
+    // Request the highest scale for images to ensure high quality
+    const scaleParam = format === 'png' ? (platform === 'android' ? 4 : 3) : scale;
     const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}&scale=${scaleParam}`);
 
     if (!response.data.images) {
@@ -524,19 +575,25 @@ async function optimizeSvg(svgContent) {
 }
 
 /**
- * Convert SVG to Android vector drawable XML
+ * Convert SVG to platform-specific format
  */
-async function convertSvgToXml(svgContent) {
+async function convertSvgForPlatform(svgContent, platform) {
   try {
-    const options = {
-      xmlTag: true,
-      fillBlack: false
-    };
+    if (platform === 'android') {
+      // Convert to Android vector drawable
+      const options = {
+        xmlTag: true,
+        fillBlack: false
+      };
 
-    const xmlContent = await svg2vectordrawable(svgContent, options);
-    return xmlContent;
+      const xmlContent = await svg2vectordrawable(svgContent, options);
+      return xmlContent;
+    } else {
+      // For iOS, keep the optimized SVG
+      return svgContent;
+    }
   } catch (error) {
-    console.error(chalk.red(`Error converting SVG to XML: ${error.message}`));
+    console.error(chalk.red(`Error converting SVG for ${platform}: ${error.message}`));
     throw error;
   }
 }
@@ -555,18 +612,17 @@ async function downloadImage(url) {
 }
 
 /**
- * Process an image for a specific DPI
+ * Process an image for a specific scale
  */
-async function processImageForDpi(imageBuffer, dpi, format, quality, scale) {
+async function processImageForScale(imageBuffer, scale, format, quality, maxScale) {
   try {
     // Get the metadata to determine original dimensions
     const metadata = await sharp(imageBuffer).metadata();
     const originalWidth = metadata.width;
     const originalHeight = metadata.height;
 
-    // Since we're downloading at 4x (xxxhdpi), calculate the relative scale
-    // For example, if we want hdpi (1.5x), we need to scale to 1.5/4 = 0.375 of the original
-    const relativeScale = scale / DPI_SCALES.xxxhdpi;
+    // Calculate relative scale based on platform
+    const relativeScale = scale / maxScale;
 
     // Calculate new dimensions based on relative scale
     const newWidth = Math.round(originalWidth * relativeScale);
@@ -585,9 +641,38 @@ async function processImageForDpi(imageBuffer, dpi, format, quality, scale) {
       return await sharpInstance.png({ quality }).toBuffer();
     }
   } catch (error) {
-    console.error(chalk.red(`Error processing image for ${dpi}: ${error.message}`));
+    console.error(chalk.red(`Error processing image for ${scale}x: ${error.message}`));
     throw error;
   }
+}
+
+/**
+ * Create Contents.json for iOS assets
+ */
+function createContentsJson(name, type = 'image') {
+  return JSON.stringify({
+    images: [
+      {
+        filename: `${name}.png`,
+        idiom: 'universal',
+        scale: '1x'
+      },
+      {
+        filename: `${name}@2x.png`,
+        idiom: 'universal',
+        scale: '2x'
+      },
+      {
+        filename: `${name}@3x.png`,
+        idiom: 'universal',
+        scale: '3x'
+      }
+    ],
+    info: {
+      author: 'Figma Asset Downloader',
+      version: 1
+    }
+  }, null, 2);
 }
 
 /**
@@ -625,17 +710,22 @@ async function main() {
 
   try {
     // Load configuration
-    const config = loadConfig();
-    console.log(chalk.green(`Loaded configuration for file: ${config.fileId}`));
+    let config = loadConfig();
+    const fileId = config.fileId;
+    const pageId = config.pageId;
+    const pageName = config.pageName;
+    const platform = config.platform;
+    console.log(chalk.green(`Loaded configuration for file: ${fileId}`));
+    console.log(chalk.green(`Platform: ${platform}`));
 
     // If --find-duplicate flag is set, find and report duplicate components
     if (findDuplicate) {
-      await findDuplicateComponents(config.fileId, config.pageId, config.pageName);
+      await findDuplicateComponents(fileId, pageId, pageName);
       return;
     }
 
     // Fetch components
-    const components = await fetchComponents(config.fileId, componentNames, config.pageId, config.pageName);
+    const components = await fetchComponents(fileId, componentNames, pageId, pageName);
 
     // Process icons (components with names starting with "icon/")
     const iconComponents = components.filter(component => component.name.startsWith('icon/'));
@@ -643,7 +733,7 @@ async function main() {
       console.log(chalk.yellow(`\nProcessing ${iconComponents.length} icons...`));
 
       // Get SVG URLs for icons
-      const iconUrls = await getImageUrls(config.fileId, iconComponents, 'svg');
+      const iconUrls = await getImageUrls(fileId, iconComponents, 'svg', 1, platform);
 
       // Process each icon
       let iconCounter = 0;
@@ -658,11 +748,7 @@ async function main() {
             // Extract the icon name from the component name (remove 'icon/' prefix)
             const iconName = component.name.replace('icon/', '');
             const sanitizedName = iconName.replace(/\s+/g, '_').toLowerCase();
-            const fileName = `${config.icons.prefix}${sanitizedName}.xml`;
-
-            // Create the drawable directory if it doesn't exist
-            const drawablePath = path.join(config.icons.path, 'drawable');
-            await fs.ensureDir(drawablePath);
+            const fileName = `${config.icons.prefix}${sanitizedName}`;
 
             // Download the SVG
             const svgContent = await downloadSvg(imageUrl);
@@ -670,14 +756,29 @@ async function main() {
             // Optimize the SVG
             const optimizedSvg = await optimizeSvg(svgContent);
 
-            // Convert SVG to Android vector drawable XML
-            const xmlContent = await convertSvgToXml(optimizedSvg);
+            if (platform === 'android') {
+              // For Android: Convert to vector drawable XML
+              const xmlContent = await convertSvgForPlatform(optimizedSvg, 'android');
+              const drawablePath = path.join(config.icons.path, 'drawable');
+              await fs.ensureDir(drawablePath);
+              const filePath = path.join(drawablePath, `${fileName}.xml`);
+              await fs.writeFile(filePath, xmlContent, 'utf8');
+            } else {
+              // For iOS: Create asset catalog structure
+              const assetPath = path.join(config.icons.path, `${fileName}.imageset`);
+              await fs.ensureDir(assetPath);
 
-            // Save the XML file
-            const filePath = path.join(drawablePath, fileName);
-            await fs.writeFile(filePath, xmlContent, 'utf8');
+              // Save SVG directly for iOS
+              const filePath = path.join(assetPath, `${fileName}.svg`);
+              await fs.writeFile(filePath, optimizedSvg, 'utf8');
 
-            spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${filePath}`);
+              // Create Contents.json
+              const contentsPath = path.join(assetPath, 'Contents.json');
+              const contents = createContentsJson(fileName, 'icon');
+              await fs.writeFile(contentsPath, contents, 'utf8');
+            }
+
+            spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${fileName}`);
           } catch (error) {
             spinner.fail(`Failed to process icon (${iconCounter}/${totalIcons}): ${component.name}`);
             console.error(chalk.red(error.message));
@@ -694,7 +795,7 @@ async function main() {
       console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
       // Get PNG URLs for images (we'll convert to webp if needed)
-      const imageUrls = await getImageUrls(config.fileId, imageComponents, 'png');
+      const imageUrls = await getImageUrls(fileId, imageComponents, 'png', 1, platform);
 
       // Process each image
       let imageCounter = 0;
@@ -715,34 +816,59 @@ async function main() {
             // Download the image
             const imageBuffer = await downloadImage(imageUrl);
 
-            // Get the list of DPIs to process (exclude any in skipDpi)
-            const dpisToProcess = Object.keys(DPI_SCALES).filter(dpi => 
-              !config.images.skipDpi || !config.images.skipDpi.includes(dpi)
-            );
-
-            // Process for each DPI
-            for (const dpi of dpisToProcess) {
-              const scale = DPI_SCALES[dpi];
-              const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
-              await fs.ensureDir(drawablePath);
-
-              const fileName = `${fileNameBase}.${config.images.format}`;
-              const filePath = path.join(drawablePath, fileName);
-
-              // Process the image for this DPI
-              const processedImage = await processImageForDpi(
-                imageBuffer, 
-                dpi, 
-                config.images.format, 
-                config.images.quality, 
-                scale
+            if (platform === 'android') {
+              // Get the list of DPIs to process (exclude any in skipDpi)
+              const dpisToProcess = Object.keys(ANDROID_DPI_SCALES).filter(dpi =>
+                !config.images.skipDpi || !config.images.skipDpi.includes(dpi)
               );
 
-              // Save the processed image
-              await fs.writeFile(filePath, processedImage);
+              // Process for each DPI
+              for (const dpi of dpisToProcess) {
+                const scale = ANDROID_DPI_SCALES[dpi];
+                const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
+                await fs.ensureDir(drawablePath);
+
+                const fileName = `${fileNameBase}.${config.images.format}`;
+                const filePath = path.join(drawablePath, fileName);
+
+                const processedImage = await processImageForScale(
+                  imageBuffer,
+                  scale,
+                  config.images.format,
+                  config.images.quality,
+                  ANDROID_DPI_SCALES.xxxhdpi
+                );
+
+                // Save the processed image
+                await fs.writeFile(filePath, processedImage);
+              }
+            } else {
+              // For iOS: Create asset catalog structure
+              const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
+              await fs.ensureDir(assetPath);
+
+              // Process for each scale (1x, 2x, 3x)
+              for (const [scale, factor] of Object.entries(IOS_SCALES)) {
+                const processedImage = await processImageForScale(
+                  imageBuffer,
+                  factor,
+                  'png',
+                  config.images.quality,
+                  IOS_SCALES['3x']
+                );
+
+                const scaleFileName = scale === '1x' ? fileNameBase : `${fileNameBase}@${scale}`;
+                const filePath = path.join(assetPath, `${scaleFileName}.png`);
+                await fs.writeFile(filePath, processedImage);
+              }
+
+              // Create Contents.json
+              const contentsPath = path.join(assetPath, 'Contents.json');
+              const contents = createContentsJson(fileNameBase);
+              await fs.writeFile(contentsPath, contents, 'utf8');
             }
 
-            spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase} (${dpisToProcess.length} DPI variants)`);
+            spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
           } catch (error) {
             spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
             console.error(chalk.red(error.message));
