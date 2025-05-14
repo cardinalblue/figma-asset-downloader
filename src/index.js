@@ -24,8 +24,7 @@ require('dotenv').config();
 
 // Constants
 const API_BASE_URL = 'https://api.figma.com/v1';
-const NEW_CONFIG_PATH = '.figma/figma-asset-downloader.config.yaml';
-const OLD_CONFIG_PATH = '.figma/asset_download.yaml';
+const DEFAULT_CONFIG_PATHS = ['.figma/figma-asset-downloader.config.yaml', '.figma/asset_download.yaml'];
 const DPI_SCALES = {
   ldpi: 0.75,
   mdpi: 1,
@@ -61,12 +60,14 @@ program
   .option('-a, --all', 'Download all components')
   .option('-f, --find-duplicate', 'Find and list all duplicate components')
   .option('-s, --section <section>', 'Download components from a specific section')
+  .option('-c, --config <path>', 'Path to the configuration file')
   .parse(process.argv);
 
 const componentNames = program.args;
 const downloadAll = program.opts().all;
 const findDuplicate = program.opts().findDuplicate;
 const sectionName = program.opts().section;
+const configPath = program.opts().config;
 
 // Show help message if no component names are provided and neither --all nor --find-duplicate flags are set
 if (componentNames.length === 0 && !downloadAll && !findDuplicate && !sectionName) {
@@ -78,6 +79,7 @@ if (componentNames.length === 0 && !downloadAll && !findDuplicate && !sectionNam
   console.log('  -a, --all                Download all components');
   console.log('  -f, --find-duplicate     Find and list all duplicate components');
   console.log('  -s, --section <section>  Download components from a specific section');
+  console.log('  -c, --config <path>      Path to the configuration file');
   console.log('  -V, --version            Output the version number');
   console.log('  -h, --help               Display help for command');
   console.log('\nExamples:');
@@ -160,28 +162,22 @@ async function findDuplicateComponents(fileId, pageId = '') {
  */
 function loadConfig() {
   try {
-    let configPath;
     let configFile;
+    const configLocations = configPath ? [configPath] : DEFAULT_CONFIG_PATHS;
+    const configLocation = configLocations.find(path => fs.existsSync(path));
 
-    // First try to read from the new path (.figma/figma-asset-downloader.config.yaml)
-    if (fs.existsSync(NEW_CONFIG_PATH)) {
-      configPath = NEW_CONFIG_PATH;
-      configFile = fs.readFileSync(NEW_CONFIG_PATH, 'utf8');
-      console.log(chalk.green(`Using configuration file from: ${NEW_CONFIG_PATH}`));
-    }
-    // If not found, try the old path (.figma/asset_download.yaml)
-    else if (fs.existsSync(OLD_CONFIG_PATH)) {
-      configPath = OLD_CONFIG_PATH;
-      configFile = fs.readFileSync(OLD_CONFIG_PATH, 'utf8');
-      console.log(chalk.green(`Using configuration file from: ${OLD_CONFIG_PATH}`));
-    }
-    // If neither exists, show error
-    else {
-      console.error(chalk.red(`Error: Configuration file not found at ${NEW_CONFIG_PATH} or ${OLD_CONFIG_PATH}`));
-      console.log('Please create a configuration file as described in the README');
+    // Handle config file not found
+    if (!configLocation || !fs.existsSync(configLocation)) {
+      console.error(chalk.red(`Error: Configuration file not found at ${configLocations.join(', ')}`));
+      if (!configPath) {
+        console.log('Please create a configuration file as described in the README or specify a path using --config');
+      }
       process.exit(1);
     }
 
+    // Read and log config location
+    configFile = fs.readFileSync(configLocation, 'utf8');
+    console.log(chalk.green(`Using configuration file from: ${configLocation}`));
     const config = yaml.load(configFile);
 
     // Validate required configuration
