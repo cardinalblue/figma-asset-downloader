@@ -649,21 +649,21 @@ async function processImageForScale(imageBuffer, scale, format, quality, maxScal
 /**
  * Create Contents.json for iOS assets
  */
-function createContentsJson(name, type = 'image') {
+function createContentsJson(name, format = 'png') {
   return JSON.stringify({
     images: [
       {
-        filename: `${name}.png`,
+        filename: `${name}.${format}`,
         idiom: 'universal',
         scale: '1x'
       },
       {
-        filename: `${name}@2x.png`,
+        filename: `${name}@2x.${format}`,
         idiom: 'universal',
         scale: '2x'
       },
       {
-        filename: `${name}@3x.png`,
+        filename: `${name}@3x.${format}`,
         idiom: 'universal',
         scale: '3x'
       }
@@ -749,7 +749,7 @@ async function processIcons(components, fileId, config) {
 
           // Create Contents.json
           const contentsPath = path.join(assetPath, 'Contents.json');
-          const contents = createContentsJson(fileName, 'icon');
+          const contents = createContentsJson(fileName, config.images.format);
           await fs.writeFile(contentsPath, contents, 'utf8');
         }
 
@@ -774,7 +774,7 @@ async function processImages(components, fileId, config) {
   console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
   // Get PNG URLs for images (we'll convert to webp if needed)
-  const imageUrls = await getImageUrls(fileId, imageComponents, 'png', 1, config.platform);
+  const imageUrls = await getImageUrls(fileId, imageComponents, config.images.format, 1, config.platform);
 
   // Process each image
   let imageCounter = 0;
@@ -830,19 +830,19 @@ async function processImages(components, fileId, config) {
             const processedImage = await processImageForScale(
               imageBuffer,
               factor,
-              'png',
+              config.images.format,
               config.images.quality,
               IOS_SCALES['3x']
             );
 
             const scaleFileName = scale === '1x' ? fileNameBase : `${fileNameBase}@${scale}`;
-            const filePath = path.join(assetPath, `${scaleFileName}.png`);
+            const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
             await fs.writeFile(filePath, processedImage);
           }
 
           // Create Contents.json
           const contentsPath = path.join(assetPath, 'Contents.json');
-          const contents = createContentsJson(fileNameBase);
+          const contents = createContentsJson(fileNameBase, config.images.format);
           await fs.writeFile(contentsPath, contents, 'utf8');
         }
 
