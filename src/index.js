@@ -627,7 +627,13 @@ async function downloadImage(url) {
 /**
  * Process an image for a specific scale
  */
-async function processImageForScale(imageBuffer, scale, format, quality, maxScale) {
+async function processImageForScale({
+  imageBuffer,
+  scale,
+  format,
+  quality,
+  maxScale
+}) {
   try {
     // Get the metadata to determine original dimensions
     const metadata = await sharp(imageBuffer).metadata();
@@ -843,13 +849,13 @@ async function processImages(components, fileId, config) {
             const fileName = `${fileNameBase}.${config.images.format}`;
             const filePath = path.join(drawablePath, fileName);
 
-            const processedImage = await processImageForScale(
+            const processedImage = await processImageForScale({
               imageBuffer,
               scale,
-              config.images.format,
-              config.images.quality,
-              ANDROID_DPI_SCALES.xxxhdpi
-            );
+              format: config.images.format,
+              quality: config.images.quality,
+              maxScale: ANDROID_DPI_SCALES.xxxhdpi
+            });
 
             // Save the processed image
             await fs.writeFile(filePath, processedImage);
@@ -861,13 +867,13 @@ async function processImages(components, fileId, config) {
 
           // Process for each scale (1x, 2x, 3x)
           for (const [scale, factor] of Object.entries(IOS_SCALES)) {
-            const processedImage = await processImageForScale(
+            const processedImage = await processImageForScale({
               imageBuffer,
-              factor,
-              config.images.format,
-              config.images.quality,
-              IOS_SCALES['3x']
-            );
+              scale: factor,
+              format: config.images.format,
+              quality: config.images.quality,
+              maxScale: IOS_SCALES['3x']
+            });
 
             const scaleFileName = scale === '1x' ? fileNameBase : `${fileNameBase}@${scale}`;
             const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
