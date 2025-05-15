@@ -39,7 +39,9 @@ const ANDROID_DPI_SCALES = {
 const IOS_SCALES = {
   '1x': 1,
   '2x': 2,
-  '3x': 3
+  '3x': 3,
+  'ipad_1x': 2,
+  'ipad_2x': 3
 };
 
 // Get Figma token from environment variable
@@ -703,6 +705,16 @@ function createContentsJson(name, format = 'png') {
         filename: `${name}@3x.${format}`,
         idiom: 'universal',
         scale: '3x'
+      },
+      {
+        filename: `${name}~ipad.${format}`,
+        idiom: 'ipad',
+        scale: '1x'
+      },
+      {
+        filename: `${name}~ipad@2x.${format}`,
+        idiom: 'ipad',
+        scale: '2x'
       }
     ],
     info: {
@@ -872,7 +884,7 @@ async function processImages(components, fileId, config) {
           const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
           await cleanAssetDirectory(assetPath);
 
-          // Process for each scale (1x, 2x, 3x)
+          // Process for each scale (1x, 2x, 3x for universal and 1x, 2x for iPad)
           for (const [scale, factor] of Object.entries(IOS_SCALES)) {
             const processedImage = await processImageForScale({
               imageBuffer,
@@ -882,7 +894,20 @@ async function processImages(components, fileId, config) {
               maxScale: IOS_SCALES['3x']
             });
 
-            const scaleFileName = scale === '1x' ? fileNameBase : `${fileNameBase}@${scale}`;
+            let scaleFileName;
+            if (scale.startsWith('ipad_')) {
+              // Handle iPad-specific scales
+              const ipadScale = scale.replace('ipad_', '');
+              scaleFileName = ipadScale === '1x' ?
+                `${fileNameBase}~ipad` :
+                `${fileNameBase}~ipad@${ipadScale}`;
+            } else {
+              // Handle universal scales
+              scaleFileName = scale === '1x' ?
+                fileNameBase :
+                `${fileNameBase}@${scale}`;
+            }
+
             const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
             await fs.writeFile(filePath, processedImage);
           }
