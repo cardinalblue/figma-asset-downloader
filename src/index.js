@@ -768,7 +768,7 @@ async function processIcons(components, fileId, config) {
   // Process each icon
   let iconCounter = 0;
   const totalIcons = iconComponents.length;
-  const processedComponentIds = new Set();
+  const processedComponentNames = new Set();
 
   for (const component of iconComponents) {
     iconCounter++;
@@ -808,7 +808,7 @@ async function processIcons(components, fileId, config) {
         }
 
         spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${fileName}`);
-        processedComponentIds.add(component.id);
+        processedComponentNames.add(component.name);
       } catch (error) {
         spinner.fail(`Failed to process icon (${iconCounter}/${totalIcons}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -818,7 +818,7 @@ async function processIcons(components, fileId, config) {
     }
   }
 
-  return processedComponentIds;
+  return processedComponentNames;
 }
 
 /**
@@ -830,13 +830,13 @@ async function processImages(components, fileId, config) {
 
   console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
-  // Get PNG URLs for images (we'll convert to the required format if needed)
+  // Get PNG URLs for images
   const imageUrls = await getImageUrls(fileId, imageComponents, 'png', 1, config.platform);
 
   // Process each image
   let imageCounter = 0;
   const totalImages = imageComponents.length;
-  const processedComponentIds = new Set();
+  const processedComponentNames = new Set();
 
   for (const component of imageComponents) {
     imageCounter++;
@@ -919,7 +919,7 @@ async function processImages(components, fileId, config) {
         }
 
         spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
-        processedComponentIds.add(component.id);
+        processedComponentNames.add(component.name);
       } catch (error) {
         spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -929,7 +929,7 @@ async function processImages(components, fileId, config) {
     }
   }
 
-  return processedComponentIds;
+  return processedComponentNames;
 }
 
 /**
@@ -959,15 +959,15 @@ async function main() {
     const components = await fetchComponents(fileId, componentNames, pageId, pageName);
 
     // Process icons and images
-    const processedIconIds = await processIcons(components, fileId, config);
-    const processedImageIds = await processImages(components, fileId, config);
+    const processedIconNames = await processIcons(components, fileId, config);
+    const processedImageNames = await processImages(components, fileId, config);
 
-    // Combine all processed component IDs
-    const allProcessedComponentIds = new Set([...processedIconIds, ...processedImageIds]);
+    // Combine all processed component names
+    const allProcessedComponentNames = new Set([...processedIconNames, ...processedImageNames]);
 
     // Find unprocessed components
     const unprocessedComponents = components.filter(component =>
-      !allProcessedComponentIds.has(component.id)
+      !allProcessedComponentNames.has(component.name)
     );
 
     if (unprocessedComponents.length > 0) {
