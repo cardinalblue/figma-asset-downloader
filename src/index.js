@@ -612,41 +612,6 @@ async function downloadImage(url) {
 }
 
 /**
- * Process an image for a specific scale
- */
-async function processImageForScale(imageBuffer, scale, format, quality, maxScale) {
-  try {
-    // Get the metadata to determine original dimensions
-    const metadata = await sharp(imageBuffer).metadata();
-    const originalWidth = metadata.width;
-    const originalHeight = metadata.height;
-
-    // Calculate relative scale based on platform
-    const relativeScale = scale / maxScale;
-
-    // Calculate new dimensions based on relative scale
-    const newWidth = Math.round(originalWidth * relativeScale);
-    const newHeight = Math.round(originalHeight * relativeScale);
-
-    let sharpInstance = sharp(imageBuffer)
-      .resize({
-        width: newWidth,
-        height: newHeight,
-        fit: 'contain'
-      });
-
-    if (format === 'webp') {
-      return await sharpInstance.webp({ quality }).toBuffer();
-    } else {
-      return await sharpInstance.png({ quality }).toBuffer();
-    }
-  } catch (error) {
-    console.error(chalk.red(`Error processing image for ${scale}x: ${error.message}`));
-    throw error;
-  }
-}
-
-/**
  * Create Contents.json for iOS assets
  */
 function createContentsJson(name, type = 'image') {
@@ -773,86 +738,100 @@ async function processImages(components, fileId, config) {
 
   console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
-  // Get PNG URLs for images (we'll convert to webp if needed)
-  const imageUrls = await getImageUrls(fileId, imageComponents, 'png', 1, config.platform);
-
-  // Process each image
   let imageCounter = 0;
   const totalImages = imageComponents.length;
   for (const component of imageComponents) {
     imageCounter++;
-    const imageUrl = imageUrls[component.id];
-    if (imageUrl) {
-      const spinner = ora(`Processing image (${imageCounter}/${totalImages}): ${component.name}`).start();
+    // Extract the image name from the component name (remove 'img/' prefix)
+    const imageName = component.name.replace('img/', '');
+    const sanitizedName = imageName.replace(/\s+/g, '_').toLowerCase();
+    const fileNameBase = `${config.images.prefix}${sanitizedName}`;
 
-      try {
-        // Extract the image name from the component name (remove 'img/' prefix)
-        const imageName = component.name.replace('img/', '');
-        const sanitizedName = imageName.replace(/\s+/g, '_').toLowerCase();
-        const fileNameBase = `${config.images.prefix}${sanitizedName}`;
+    if (config.platform === 'android') {
+      // Get the list of DPIs to process (exclude any in skipDpi)
+      const dpisToProcess = Object.keys(ANDROID_DPI_SCALES).filter(dpi =>
+        !config.images.skipDpi || !config.images.skipDpi.includes(dpi)
+      );
 
-        // Download the image
-        const imageBuffer = await downloadImage(imageUrl);
+      // Process for each DPI
+      for (const dpi of dpisToProcess) {
+        const scale = ANDROID_DPI_SCALES[dpi];
+        const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
+        await fs.ensureDir(drawablePath);
 
-        if (config.platform === 'android') {
-          // Get the list of DPIs to process (exclude any in skipDpi)
-          const dpisToProcess = Object.keys(ANDROID_DPI_SCALES).filter(dpi =>
-            !config.images.skipDpi || !config.images.skipDpi.includes(dpi)
-          );
+        const fileName = `${fileNameBase}.${config.images.format}`;
+        const filePath = path.join(drawablePath, fileName);
 
-          // Process for each DPI
-          for (const dpi of dpisToProcess) {
-            const scale = ANDROID_DPI_SCALES[dpi];
-            const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
-            await fs.ensureDir(drawablePath);
-
-            const fileName = `${fileNameBase}.${config.images.format}`;
-            const filePath = path.join(drawablePath, fileName);
-
-            const processedImage = await processImageForScale(
-              imageBuffer,
-              scale,
-              config.images.format,
-              config.images.quality,
-              ANDROID_DPI_SCALES.xxxhdpi
-            );
-
-            // Save the processed image
-            await fs.writeFile(filePath, processedImage);
-          }
-        } else {
-          // Create asset catalog structure
-          const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
-          await fs.ensureDir(assetPath);
-
-          // Process for each scale (1x, 2x, 3x)
-          for (const [scale, factor] of Object.entries(IOS_SCALES)) {
-            const processedImage = await processImageForScale(
-              imageBuffer,
-              factor,
-              'png',
-              config.images.quality,
-              IOS_SCALES['3x']
-            );
-
-            const scaleFileName = scale === '1x' ? fileNameBase : `${fileNameBase}@${scale}`;
-            const filePath = path.join(assetPath, `${scaleFileName}.png`);
-            await fs.writeFile(filePath, processedImage);
-          }
-
-          // Create Contents.json
-          const contentsPath = path.join(assetPath, 'Contents.json');
-          const contents = createContentsJson(fileNameBase);
-          await fs.writeFile(contentsPath, contents, 'utf8');
+        // Download the image from Figma at the correct scale
+        const imageUrls = await getImageUrls(fileId, [component], 'png', scale, config.platform);
+        const imageUrl = imageUrls[component.id];
+        if (!imageUrl) {
+          console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}) [${dpi}]: ${component.name}`));
+          continue;
         }
 
-        spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
-      } catch (error) {
-        spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
-        console.error(chalk.red(error.message));
+        const spinner = ora(`Processing image (${imageCounter}/${totalImages}) [${dpi}]: ${component.name}`).start();
+        try {
+          let imageBuffer = await downloadImage(imageUrl);
+
+          // Convert to WebP if needed
+          if (config.images.format === 'webp') {
+            imageBuffer = await sharp(imageBuffer)
+              .webp({ quality: config.images.quality })
+              .toBuffer();
+          }
+
+          await fs.writeFile(filePath, imageBuffer);
+          spinner.succeed(`Image saved (${imageCounter}/${totalImages}) [${dpi}]: ${fileNameBase}`);
+        } catch (error) {
+          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}) [${dpi}]: ${component.name}`);
+          console.error(chalk.red(error.message));
+        }
       }
     } else {
-      console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}): ${component.name}`));
+      // Create asset catalog structure
+      const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
+      await fs.ensureDir(assetPath);
+      await fs.emptyDir(assetPath);
+
+      // Process for each scale (1x, 2x, 3x)
+      for (const [scale, factor] of Object.entries(IOS_SCALES)) {
+        // Download the image from Figma at the correct scale
+        const imageUrls = await getImageUrls(fileId, [component], config.images.format, factor, config.platform);
+        const imageUrl = imageUrls[component.id];
+        if (!imageUrl) {
+          console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`));
+          continue;
+        }
+
+        let scaleFileName;
+        if (scale.startsWith('ipad_')) {
+          const ipadScale = scale.replace('ipad_', '');
+            scaleFileName = ipadScale === '1x' ?
+              `${fileNameBase}~ipad` :
+              `${fileNameBase}~ipad@${ipadScale}`;
+        } else {
+          scaleFileName = scale === '1x' ?
+            fileNameBase :
+            `${fileNameBase}@${scale}`;
+        }
+
+        const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
+        const spinner = ora(`Processing image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`).start();
+        try {
+          const imageBuffer = await downloadImage(imageUrl);
+          await fs.writeFile(filePath, imageBuffer);
+          spinner.succeed(`Image saved (${imageCounter}/${totalImages}) [${scale}]: ${scaleFileName}`);
+        } catch (error) {
+          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`);
+          console.error(chalk.red(error.message));
+        }
+      }
+
+      // Create Contents.json
+      const contentsPath = path.join(assetPath, 'Contents.json');
+      const contents = createContentsJson(fileNameBase, config.images.format);
+      await fs.writeFile(contentsPath, contents, 'utf8');
     }
   }
 }
