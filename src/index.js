@@ -756,7 +756,7 @@ async function processIcons(components, fileId, config) {
   // Process each icon
   let iconCounter = 0;
   const totalIcons = iconComponents.length;
-  const processedComponents = new Set(); // Track processed components
+  const processedComponents = new Set();
 
   for (const component of iconComponents) {
     iconCounter++;
@@ -777,13 +777,13 @@ async function processIcons(components, fileId, config) {
           // Convert to vector drawable XML
           const xmlContent = await convertSvgForPlatform(optimizedSvg, 'android');
           const drawablePath = path.join(config.icons.path, 'drawable');
-          await cleanAssetDirectory(drawablePath); // Clean before writing new icon
+          await cleanAssetDirectory(drawablePath);
           const filePath = path.join(drawablePath, `${fileName}.xml`);
           await fs.writeFile(filePath, xmlContent, 'utf8');
         } else {
           // Create asset catalog structure
           const assetPath = path.join(config.icons.path, `${fileName}.imageset`);
-          await cleanAssetDirectory(assetPath); // Clean before writing new icon asset
+          await cleanAssetDirectory(assetPath);
 
           // Save SVG directly for iOS
           const filePath = path.join(assetPath, `${fileName}.svg`);
@@ -796,7 +796,7 @@ async function processIcons(components, fileId, config) {
         }
 
         spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${fileName}`);
-        processedComponents.add(component.id); // Add to processed set on success
+        processedComponents.add(component.id);
       } catch (error) {
         spinner.fail(`Failed to process icon (${iconCounter}/${totalIcons}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -806,7 +806,7 @@ async function processIcons(components, fileId, config) {
     }
   }
 
-  return processedComponents; // Return the set of processed component IDs
+  return processedComponents;
 }
 
 /**
@@ -824,7 +824,7 @@ async function processImages(components, fileId, config) {
   // Process each image
   let imageCounter = 0;
   const totalImages = imageComponents.length;
-  const processedComponents = new Set(); // Track processed components
+  const processedComponents = new Set();
 
   for (const component of imageComponents) {
     imageCounter++;
@@ -851,7 +851,7 @@ async function processImages(components, fileId, config) {
           for (const dpi of dpisToProcess) {
             const scale = ANDROID_DPI_SCALES[dpi];
             const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
-            await cleanAssetDirectory(drawablePath); // Clean before writing new image
+            await cleanAssetDirectory(drawablePath);
 
             const fileName = `${fileNameBase}.${config.images.format}`;
             const filePath = path.join(drawablePath, fileName);
@@ -870,7 +870,7 @@ async function processImages(components, fileId, config) {
         } else {
           // Create asset catalog structure
           const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
-          await cleanAssetDirectory(assetPath); // Clean before writing new image asset
+          await cleanAssetDirectory(assetPath);
 
           // Process for each scale (1x, 2x, 3x)
           for (const [scale, factor] of Object.entries(IOS_SCALES)) {
@@ -894,7 +894,7 @@ async function processImages(components, fileId, config) {
         }
 
         spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
-        processedComponents.add(component.id); // Add to processed set on success
+        processedComponents.add(component.id);
       } catch (error) {
         spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -904,7 +904,7 @@ async function processImages(components, fileId, config) {
     }
   }
 
-  return processedComponents; // Return the set of processed component IDs
+  return processedComponents;
 }
 
 /**
@@ -922,7 +922,7 @@ async function processButtons(components, fileId, config) {
   // Process each button
   let buttonCounter = 0;
   const totalButtons = buttonComponents.length;
-  const processedComponents = new Set(); // Track processed components
+  const processedComponents = new Set();
 
   for (const component of buttonComponents) {
     buttonCounter++;
@@ -943,13 +943,13 @@ async function processButtons(components, fileId, config) {
           // Convert to vector drawable XML
           const xmlContent = await convertSvgForPlatform(optimizedSvg, 'android');
           const drawablePath = path.join(config.buttons.path, 'drawable');
-          await cleanAssetDirectory(drawablePath); // Clean before writing new button
+          await cleanAssetDirectory(drawablePath);
           const filePath = path.join(drawablePath, `${fileName}.xml`);
           await fs.writeFile(filePath, xmlContent, 'utf8');
         } else {
           // Create asset catalog structure
           const assetPath = path.join(config.buttons.path, `${fileName}.imageset`);
-          await cleanAssetDirectory(assetPath); // Clean before writing new button asset
+          await cleanAssetDirectory(assetPath);
 
           // Save SVG directly for iOS
           const filePath = path.join(assetPath, `${fileName}.svg`);
@@ -962,7 +962,7 @@ async function processButtons(components, fileId, config) {
         }
 
         spinner.succeed(`Button saved (${buttonCounter}/${totalButtons}): ${fileName}`);
-        processedComponents.add(component.id); // Add to processed set on success
+        processedComponents.add(component.id);
       } catch (error) {
         spinner.fail(`Failed to process button (${buttonCounter}/${totalButtons}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -972,7 +972,7 @@ async function processButtons(components, fileId, config) {
     }
   }
 
-  return processedComponents; // Return the set of processed component IDs
+  return processedComponents;
 }
 
 /**
