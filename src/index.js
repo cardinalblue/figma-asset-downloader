@@ -356,12 +356,6 @@ async function fetchComponents(fileId, componentNames, pageId = '', pageName = '
 
       // Filter to only include exact matches
       filteredComponents = Array.from(nameMap.values());
-
-      // Check if any requested components were not found
-      const notFound = componentNames.filter(name => !nameMap.has(name));
-      if (notFound.length > 0) {
-        console.log(chalk.red(`Warning: The following components were not found: ${notFound.join(', ')}`));
-      }
     } else if (!downloadAll && !sectionName) {
       // This case should not happen due to the help message check at the beginning,
       // but we'll keep it as a safeguard
@@ -966,14 +960,14 @@ async function main() {
     const allProcessedComponentNames = new Set([...processedIconNames, ...processedImageNames]);
 
     // Find unprocessed components
-    const unprocessedComponents = components.filter(component =>
-      !allProcessedComponentNames.has(component.name)
+    const unprocessedComponentNames = componentNames.filter(componentName =>
+      !allProcessedComponentNames.has(componentName)
     );
 
-    if (unprocessedComponents.length > 0) {
+    if (unprocessedComponentNames.length > 0) {
       console.log(chalk.red('\nThe following components were not processed:'));
-      unprocessedComponents.forEach(component => {
-        console.log(chalk.red(`- ${component.name}`));
+      unprocessedComponentNames.forEach(componentName => {
+        console.log(chalk.red(`- ${componentName}`));
       });
     }
 
