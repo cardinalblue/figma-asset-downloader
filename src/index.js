@@ -650,6 +650,24 @@ async function processImageForScale(imageBuffer, scale, format, quality, maxScal
  * Create Contents.json for iOS assets
  */
 function createContentsJson(name, format = 'png') {
+  if (format === 'svg') {
+    return JSON.stringify({
+      images: [
+        {
+          filename: `${name}.${format}`,
+          idiom: 'universal'
+        }
+      ],
+      info: {
+        author: 'Figma Asset Downloader',
+        version: 1
+      },
+      properties: {
+        "template-rendering-intent": "original"
+      }
+    }, null, 2);
+  }
+
   return JSON.stringify({
     images: [
       {
@@ -669,8 +687,11 @@ function createContentsJson(name, format = 'png') {
       }
     ],
     info: {
-      author: 'Figma Asset Downloader',
-      version: 1
+      version: 1,
+      author: 'xcode'
+    },
+    properties: {
+      "template-rendering-intent": "original"
     }
   }, null, 2);
 }
