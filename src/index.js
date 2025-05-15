@@ -934,7 +934,8 @@ async function main() {
     if (unprocessedComponentNames.length > 0) {
       console.log(chalk.red('\nThe following components were not processed:'));
       unprocessedComponentNames.forEach(componentName => {
-        console.log(chalk.red(`- ${componentName}`));
+        const componentExists = components.some(c => c.name === componentName);
+        console.log(chalk.red(`- ${componentName}${!componentExists ? ' (not found)' : ''}`));
       });
     }
 
