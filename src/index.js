@@ -830,8 +830,8 @@ async function processImages(components, fileId, config) {
 
   console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
-  // Get PNG URLs for images (we'll convert to webp if needed)
-  const imageUrls = await getImageUrls(fileId, imageComponents, config.images.format, 1, config.platform);
+  // Get PNG URLs for images (we'll convert to the required format if needed)
+  const imageUrls = await getImageUrls(fileId, imageComponents, 'png', 1, config.platform);
 
   // Process each image
   let imageCounter = 0;
