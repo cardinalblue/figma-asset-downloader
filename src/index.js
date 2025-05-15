@@ -595,19 +595,6 @@ async function convertSvgForPlatform(svgContent, platform) {
 }
 
 /**
- * Clean specific asset directory before writing new assets
- */
-async function cleanAssetDirectory(assetPath) {
-  try {
-    await fs.ensureDir(assetPath);
-    await fs.emptyDir(assetPath);
-  } catch (error) {
-    console.error(chalk.red(`Error cleaning asset directory ${assetPath}: ${error.message}`));
-    throw error;
-  }
-}
-
-/**
  * Download an image from a URL
  */
 async function downloadImage(url) {
@@ -783,13 +770,14 @@ async function processIcons(components, fileId, config) {
           // Convert to vector drawable XML
           const xmlContent = await convertSvgForPlatform(optimizedSvg, 'android');
           const drawablePath = path.join(config.icons.path, 'drawable');
-          await cleanAssetDirectory(drawablePath);
+          await fs.ensureDir(drawablePath);
           const filePath = path.join(drawablePath, `${fileName}.xml`);
           await fs.writeFile(filePath, xmlContent, 'utf8');
         } else {
           // Create asset catalog structure
           const assetPath = path.join(config.icons.path, `${fileName}.imageset`);
-          await cleanAssetDirectory(assetPath);
+          await fs.ensureDir(assetPath);
+          await fs.emptyDir(assetPath);
 
           // Save SVG directly for iOS
           const filePath = path.join(assetPath, `${fileName}.svg`);
@@ -857,7 +845,7 @@ async function processImages(components, fileId, config) {
           for (const dpi of dpisToProcess) {
             const scale = ANDROID_DPI_SCALES[dpi];
             const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
-            await cleanAssetDirectory(drawablePath);
+            await fs.ensureDir(drawablePath);
 
             const fileName = `${fileNameBase}.${config.images.format}`;
             const filePath = path.join(drawablePath, fileName);
@@ -876,7 +864,8 @@ async function processImages(components, fileId, config) {
         } else {
           // Create asset catalog structure
           const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
-          await cleanAssetDirectory(assetPath);
+          await fs.ensureDir(assetPath);
+          await fs.emptyDir(assetPath);
 
           // Process for each scale (1x, 2x, 3x for universal and 1x, 2x for iPad)
           for (const [scale, factor] of Object.entries(IOS_SCALES)) {
