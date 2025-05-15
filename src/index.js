@@ -514,23 +514,22 @@ function traverseNode(node, callback, path = [], depth = 0) {
  * Get image URLs for components
  */
 async function getImageUrls(fileId, components, format = 'svg', scale = 1, platform) {
-  const spinner = ora('Getting image URLs from Figma...').start();
+  const spinner = ora(`Getting image URLs from Figma (format: ${format}, scale: ${scale})...`).start();
 
   try {
     const componentIds = components.map(component => component.id).join(',');
     // Request the highest scale for images to ensure high quality
-    const scaleParam = format === 'png' ? (platform === 'android' ? 4 : 3) : scale;
-    const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}&scale=${scaleParam}`);
+    const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}&scale=${scale}`);
 
     if (!response.data.images) {
-      spinner.fail('No image URLs returned from Figma API');
+      spinner.fail(`No image URLs returned from Figma API (format: ${format}, scale: ${scale})`);
       process.exit(1);
     }
 
-    spinner.succeed('Successfully retrieved image URLs');
+    spinner.succeed(`Successfully retrieved image URLs (format: ${format}, scale: ${scale})`);
     return response.data.images;
   } catch (error) {
-    spinner.fail('Error getting image URLs from Figma');
+    spinner.fail(`Error getting image URLs from Figma (format: ${format}, scale: ${scale})`);
     handleApiError(error);
     process.exit(1);
   }
