@@ -758,7 +758,7 @@ function handleApiError(error) {
  */
 async function processIcons(components, fileId, config) {
   const iconComponents = components.filter(component => component.name.startsWith('icon/'));
-  if (iconComponents.length === 0) return;
+  if (iconComponents.length === 0) return [];
 
   console.log(chalk.yellow(`\nProcessing ${iconComponents.length} icons...`));
 
@@ -826,7 +826,7 @@ async function processIcons(components, fileId, config) {
  */
 async function processImages(components, fileId, config) {
   const imageComponents = components.filter(component => component.name.startsWith('img/'));
-  if (imageComponents.length === 0) return;
+  if (imageComponents.length === 0) return [];
 
   console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
