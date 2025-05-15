@@ -39,7 +39,9 @@ const ANDROID_DPI_SCALES = {
 const IOS_SCALES = {
   '1x': 1,
   '2x': 2,
-  '3x': 3
+  '3x': 3,
+  'ipad_1x': 2,
+  'ipad_2x': 3
 };
 
 // Get Figma token from environment variable
@@ -354,12 +356,6 @@ async function fetchComponents(fileId, componentNames, pageId = '', pageName = '
 
       // Filter to only include exact matches
       filteredComponents = Array.from(nameMap.values());
-
-      // Check if any requested components were not found
-      const notFound = componentNames.filter(name => !nameMap.has(name));
-      if (notFound.length > 0) {
-        console.log(chalk.yellow(`Warning: The following components were not found: ${notFound.join(', ')}`));
-      }
     } else if (!downloadAll && !sectionName) {
       // This case should not happen due to the help message check at the beginning,
       // but we'll keep it as a safeguard
@@ -614,7 +610,13 @@ async function downloadImage(url) {
 /**
  * Process an image for a specific scale
  */
-async function processImageForScale(imageBuffer, scale, format, quality, maxScale) {
+async function processImageForScale({
+  imageBuffer,
+  scale,
+  format,
+  quality,
+  maxScale
+}) {
   try {
     // Get the metadata to determine original dimensions
     const metadata = await sharp(imageBuffer).metadata();
@@ -649,28 +651,59 @@ async function processImageForScale(imageBuffer, scale, format, quality, maxScal
 /**
  * Create Contents.json for iOS assets
  */
-function createContentsJson(name, type = 'image') {
+function createContentsJson(name, format = 'png') {
+  if (format === 'svg') {
+    return JSON.stringify({
+      images: [
+        {
+          filename: `${name}.${format}`,
+          idiom: 'universal'
+        }
+      ],
+      info: {
+        author: 'Figma Asset Downloader',
+        version: 1
+      },
+      properties: {
+        "template-rendering-intent": "original"
+      }
+    }, null, 2);
+  }
+
   return JSON.stringify({
     images: [
       {
-        filename: `${name}.png`,
+        filename: `${name}.${format}`,
         idiom: 'universal',
         scale: '1x'
       },
       {
-        filename: `${name}@2x.png`,
+        filename: `${name}@2x.${format}`,
         idiom: 'universal',
         scale: '2x'
       },
       {
-        filename: `${name}@3x.png`,
+        filename: `${name}@3x.${format}`,
         idiom: 'universal',
         scale: '3x'
+      },
+      {
+        filename: `${name}~ipad.${format}`,
+        idiom: 'ipad',
+        scale: '1x'
+      },
+      {
+        filename: `${name}~ipad@2x.${format}`,
+        idiom: 'ipad',
+        scale: '2x'
       }
     ],
     info: {
-      author: 'Figma Asset Downloader',
-      version: 1
+      version: 1,
+      author: 'xcode'
+    },
+    properties: {
+      "template-rendering-intent": "original"
     }
   }, null, 2);
 }
@@ -706,7 +739,7 @@ function handleApiError(error) {
  */
 async function processIcons(components, fileId, config) {
   const iconComponents = components.filter(component => component.name.startsWith('icon/'));
-  if (iconComponents.length === 0) return;
+  if (iconComponents.length === 0) return [];
 
   console.log(chalk.yellow(`\nProcessing ${iconComponents.length} icons...`));
 
@@ -716,6 +749,8 @@ async function processIcons(components, fileId, config) {
   // Process each icon
   let iconCounter = 0;
   const totalIcons = iconComponents.length;
+  const processedComponentNames = new Set();
+
   for (const component of iconComponents) {
     iconCounter++;
     const imageUrl = iconUrls[component.id];
@@ -742,6 +777,7 @@ async function processIcons(components, fileId, config) {
           // Create asset catalog structure
           const assetPath = path.join(config.icons.path, `${fileName}.imageset`);
           await fs.ensureDir(assetPath);
+          await fs.emptyDir(assetPath);
 
           // Save SVG directly for iOS
           const filePath = path.join(assetPath, `${fileName}.svg`);
@@ -749,11 +785,12 @@ async function processIcons(components, fileId, config) {
 
           // Create Contents.json
           const contentsPath = path.join(assetPath, 'Contents.json');
-          const contents = createContentsJson(fileName, 'icon');
+          const contents = createContentsJson(fileName, config.images.format);
           await fs.writeFile(contentsPath, contents, 'utf8');
         }
 
         spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${fileName}`);
+        processedComponentNames.add(component.name);
       } catch (error) {
         spinner.fail(`Failed to process icon (${iconCounter}/${totalIcons}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -762,6 +799,8 @@ async function processIcons(components, fileId, config) {
       console.error(chalk.red(`No image URL found for icon (${iconCounter}/${totalIcons}): ${component.name}`));
     }
   }
+
+  return processedComponentNames;
 }
 
 /**
@@ -769,16 +808,18 @@ async function processIcons(components, fileId, config) {
  */
 async function processImages(components, fileId, config) {
   const imageComponents = components.filter(component => component.name.startsWith('img/'));
-  if (imageComponents.length === 0) return;
+  if (imageComponents.length === 0) return [];
 
   console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
-  // Get PNG URLs for images (we'll convert to webp if needed)
+  // Get PNG URLs for images
   const imageUrls = await getImageUrls(fileId, imageComponents, 'png', 1, config.platform);
 
   // Process each image
   let imageCounter = 0;
   const totalImages = imageComponents.length;
+  const processedComponentNames = new Set();
+
   for (const component of imageComponents) {
     imageCounter++;
     const imageUrl = imageUrls[component.id];
@@ -809,13 +850,13 @@ async function processImages(components, fileId, config) {
             const fileName = `${fileNameBase}.${config.images.format}`;
             const filePath = path.join(drawablePath, fileName);
 
-            const processedImage = await processImageForScale(
+            const processedImage = await processImageForScale({
               imageBuffer,
               scale,
-              config.images.format,
-              config.images.quality,
-              ANDROID_DPI_SCALES.xxxhdpi
-            );
+              format: config.images.format,
+              quality: config.images.quality,
+              maxScale: ANDROID_DPI_SCALES.xxxhdpi
+            });
 
             // Save the processed image
             await fs.writeFile(filePath, processedImage);
@@ -824,29 +865,44 @@ async function processImages(components, fileId, config) {
           // Create asset catalog structure
           const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
           await fs.ensureDir(assetPath);
+          await fs.emptyDir(assetPath);
 
-          // Process for each scale (1x, 2x, 3x)
+          // Process for each scale (1x, 2x, 3x for universal and 1x, 2x for iPad)
           for (const [scale, factor] of Object.entries(IOS_SCALES)) {
-            const processedImage = await processImageForScale(
+            const processedImage = await processImageForScale({
               imageBuffer,
-              factor,
-              'png',
-              config.images.quality,
-              IOS_SCALES['3x']
-            );
+              scale: factor,
+              format: config.images.format,
+              quality: config.images.quality,
+              maxScale: IOS_SCALES['3x']
+            });
 
-            const scaleFileName = scale === '1x' ? fileNameBase : `${fileNameBase}@${scale}`;
-            const filePath = path.join(assetPath, `${scaleFileName}.png`);
+            let scaleFileName;
+            if (scale.startsWith('ipad_')) {
+              // Handle iPad-specific scales
+              const ipadScale = scale.replace('ipad_', '');
+              scaleFileName = ipadScale === '1x' ?
+                `${fileNameBase}~ipad` :
+                `${fileNameBase}~ipad@${ipadScale}`;
+            } else {
+              // Handle universal scales
+              scaleFileName = scale === '1x' ?
+                fileNameBase :
+                `${fileNameBase}@${scale}`;
+            }
+
+            const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
             await fs.writeFile(filePath, processedImage);
           }
 
           // Create Contents.json
           const contentsPath = path.join(assetPath, 'Contents.json');
-          const contents = createContentsJson(fileNameBase);
+          const contents = createContentsJson(fileNameBase, config.images.format);
           await fs.writeFile(contentsPath, contents, 'utf8');
         }
 
         spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
+        processedComponentNames.add(component.name);
       } catch (error) {
         spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -855,6 +911,8 @@ async function processImages(components, fileId, config) {
       console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}): ${component.name}`));
     }
   }
+
+  return processedComponentNames;
 }
 
 /**
@@ -884,8 +942,23 @@ async function main() {
     const components = await fetchComponents(fileId, componentNames, pageId, pageName);
 
     // Process icons and images
-    await processIcons(components, fileId, config);
-    await processImages(components, fileId, config);
+    const processedIconNames = await processIcons(components, fileId, config);
+    const processedImageNames = await processImages(components, fileId, config);
+
+    // Combine all processed component names
+    const allProcessedComponentNames = new Set([...processedIconNames, ...processedImageNames]);
+
+    // Find unprocessed components
+    const unprocessedComponentNames = componentNames.filter(componentName =>
+      !allProcessedComponentNames.has(componentName)
+    );
+
+    if (unprocessedComponentNames.length > 0) {
+      console.log(chalk.red('\nThe following components were not processed:'));
+      unprocessedComponentNames.forEach(componentName => {
+        console.log(chalk.red(`- ${componentName}`));
+      });
+    }
 
     console.log(chalk.green('\nAsset download and processing complete!'));
   } catch (error) {
