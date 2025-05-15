@@ -756,7 +756,7 @@ async function processIcons(components, fileId, config) {
   // Process each icon
   let iconCounter = 0;
   const totalIcons = iconComponents.length;
-  const processedComponents = new Set();
+  const processedComponentIds = new Set();
 
   for (const component of iconComponents) {
     iconCounter++;
@@ -796,7 +796,7 @@ async function processIcons(components, fileId, config) {
         }
 
         spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${fileName}`);
-        processedComponents.add(component.id);
+        processedComponentIds.add(component.id);
       } catch (error) {
         spinner.fail(`Failed to process icon (${iconCounter}/${totalIcons}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -806,7 +806,7 @@ async function processIcons(components, fileId, config) {
     }
   }
 
-  return processedComponents;
+  return processedComponentIds;
 }
 
 /**
@@ -824,7 +824,7 @@ async function processImages(components, fileId, config) {
   // Process each image
   let imageCounter = 0;
   const totalImages = imageComponents.length;
-  const processedComponents = new Set();
+  const processedComponentIds = new Set();
 
   for (const component of imageComponents) {
     imageCounter++;
@@ -894,7 +894,7 @@ async function processImages(components, fileId, config) {
         }
 
         spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
-        processedComponents.add(component.id);
+        processedComponentIds.add(component.id);
       } catch (error) {
         spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -904,7 +904,7 @@ async function processImages(components, fileId, config) {
     }
   }
 
-  return processedComponents;
+  return processedComponentIds;
 }
 
 /**
@@ -933,16 +933,16 @@ async function main() {
     // Fetch components
     const components = await fetchComponents(fileId, componentNames, pageId, pageName);
 
-    // Process icons and images and get their processed component IDs
-    const processedIcons = await processIcons(components, fileId, config);
-    const processedImages = await processImages(components, fileId, config);
+    // Process icons and images
+    const processedIconIds = await processIcons(components, fileId, config);
+    const processedImageIds = await processImages(components, fileId, config);
 
     // Combine all processed component IDs
-    const allProcessedComponents = new Set([...processedIcons, ...processedImages]);
+    const allProcessedComponentIds = new Set([...processedIconIds, ...processedImageIds]);
 
     // Find unprocessed components
     const unprocessedComponents = components.filter(component =>
-      !allProcessedComponents.has(component.id)
+      !allProcessedComponentIds.has(component.id)
     );
 
     if (unprocessedComponents.length > 0) {
