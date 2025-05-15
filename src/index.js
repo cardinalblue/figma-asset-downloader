@@ -870,8 +870,9 @@ async function main() {
     const fileId = config.fileId;
     const pageId = config.pageId;
     const pageName = config.pageName;
+    const platform = config.platform;
     console.log(chalk.green(`Loaded configuration for file: ${fileId}`));
-    console.log(chalk.green(`Platform: ${config.platform}`));
+    console.log(chalk.green(`Platform: ${platform}`));
 
     // If --find-duplicate flag is set, find and report duplicate components
     if (findDuplicate) {
