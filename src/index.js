@@ -358,7 +358,7 @@ async function fetchComponents(fileId, componentNames, pageId = '', pageName = '
       // Check if any requested components were not found
       const notFound = componentNames.filter(name => !nameMap.has(name));
       if (notFound.length > 0) {
-        console.log(chalk.yellow(`Warning: The following components were not found: ${notFound.join(', ')}`));
+        console.log(chalk.red(`Warning: The following components were not found: ${notFound.join(', ')}`));
       }
     } else if (!downloadAll && !sectionName) {
       // This case should not happen due to the help message check at the beginning,
@@ -756,6 +756,8 @@ async function processIcons(components, fileId, config) {
   // Process each icon
   let iconCounter = 0;
   const totalIcons = iconComponents.length;
+  const processedComponents = new Set(); // Track processed components
+
   for (const component of iconComponents) {
     iconCounter++;
     const imageUrl = iconUrls[component.id];
@@ -794,6 +796,7 @@ async function processIcons(components, fileId, config) {
         }
 
         spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${fileName}`);
+        processedComponents.add(component.id); // Add to processed set on success
       } catch (error) {
         spinner.fail(`Failed to process icon (${iconCounter}/${totalIcons}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -802,6 +805,8 @@ async function processIcons(components, fileId, config) {
       console.error(chalk.red(`No image URL found for icon (${iconCounter}/${totalIcons}): ${component.name}`));
     }
   }
+
+  return processedComponents; // Return the set of processed component IDs
 }
 
 /**
@@ -819,6 +824,8 @@ async function processImages(components, fileId, config) {
   // Process each image
   let imageCounter = 0;
   const totalImages = imageComponents.length;
+  const processedComponents = new Set(); // Track processed components
+
   for (const component of imageComponents) {
     imageCounter++;
     const imageUrl = imageUrls[component.id];
@@ -887,6 +894,7 @@ async function processImages(components, fileId, config) {
         }
 
         spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
+        processedComponents.add(component.id); // Add to processed set on success
       } catch (error) {
         spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -895,6 +903,8 @@ async function processImages(components, fileId, config) {
       console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}): ${component.name}`));
     }
   }
+
+  return processedComponents; // Return the set of processed component IDs
 }
 
 /**
@@ -923,9 +933,24 @@ async function main() {
     // Fetch components
     const components = await fetchComponents(fileId, componentNames, pageId, pageName);
 
-    // Process icons and images
-    await processIcons(components, fileId, config);
-    await processImages(components, fileId, config);
+    // Process icons and images and get their processed component IDs
+    const processedIcons = await processIcons(components, fileId, config);
+    const processedImages = await processImages(components, fileId, config);
+
+    // Combine all processed component IDs
+    const allProcessedComponents = new Set([...processedIcons, ...processedImages]);
+
+    // Find unprocessed components
+    const unprocessedComponents = components.filter(component =>
+      !allProcessedComponents.has(component.id)
+    );
+
+    if (unprocessedComponents.length > 0) {
+      console.log(chalk.red('\nThe following components were not processed:'));
+      unprocessedComponents.forEach(component => {
+        console.log(chalk.red(`- ${component.name}`));
+      });
+    }
 
     console.log(chalk.green('\nAsset download and processing complete!'));
   } catch (error) {
