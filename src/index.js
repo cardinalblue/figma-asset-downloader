@@ -39,7 +39,9 @@ const ANDROID_DPI_SCALES = {
 const IOS_SCALES = {
   '1x': 1,
   '2x': 2,
-  '3x': 3
+  '3x': 3,
+  'ipad_1x': 2,
+  'ipad_2x': 3
 };
 
 // Get Figma token from environment variable
@@ -354,12 +356,6 @@ async function fetchComponents(fileId, componentNames, pageId = '', pageName = '
 
       // Filter to only include exact matches
       filteredComponents = Array.from(nameMap.values());
-
-      // Check if any requested components were not found
-      const notFound = componentNames.filter(name => !nameMap.has(name));
-      if (notFound.length > 0) {
-        console.log(chalk.yellow(`Warning: The following components were not found: ${notFound.join(', ')}`));
-      }
     } else if (!downloadAll && !sectionName) {
       // This case should not happen due to the help message check at the beginning,
       // but we'll keep it as a safeguard
@@ -523,7 +519,7 @@ async function getImageUrls(fileId, components, format = 'svg', scale = 1, platf
 
     if (!response.data.images) {
       spinner.fail(`No image URLs returned from Figma API (format: ${format}, scale: ${scale})`);
-      process.exit(1);
+      return [];
     }
 
     spinner.succeed(`Successfully retrieved image URLs (format: ${format}, scale: ${scale})`);
@@ -531,7 +527,7 @@ async function getImageUrls(fileId, components, format = 'svg', scale = 1, platf
   } catch (error) {
     spinner.fail(`Error getting image URLs from Figma (format: ${format}, scale: ${scale})`);
     handleApiError(error);
-    process.exit(1);
+    return [];
   }
 }
 
@@ -613,28 +609,59 @@ async function downloadImage(url) {
 /**
  * Create Contents.json for iOS assets
  */
-function createContentsJson(name, type = 'image') {
+function createContentsJson(name, format = 'png') {
+  if (format === 'svg') {
+    return JSON.stringify({
+      images: [
+        {
+          filename: `${name}.${format}`,
+          idiom: 'universal'
+        }
+      ],
+      info: {
+        author: 'Figma Asset Downloader',
+        version: 1
+      },
+      properties: {
+        "template-rendering-intent": "original"
+      }
+    }, null, 2);
+  }
+
   return JSON.stringify({
     images: [
       {
-        filename: `${name}.png`,
+        filename: `${name}.${format}`,
         idiom: 'universal',
         scale: '1x'
       },
       {
-        filename: `${name}@2x.png`,
+        filename: `${name}@2x.${format}`,
         idiom: 'universal',
         scale: '2x'
       },
       {
-        filename: `${name}@3x.png`,
+        filename: `${name}@3x.${format}`,
         idiom: 'universal',
         scale: '3x'
+      },
+      {
+        filename: `${name}~ipad.${format}`,
+        idiom: 'ipad',
+        scale: '1x'
+      },
+      {
+        filename: `${name}~ipad@2x.${format}`,
+        idiom: 'ipad',
+        scale: '2x'
       }
     ],
     info: {
-      author: 'Figma Asset Downloader',
-      version: 1
+      version: 1,
+      author: 'xcode'
+    },
+    properties: {
+      "template-rendering-intent": "original"
     }
   }, null, 2);
 }
@@ -670,7 +697,7 @@ function handleApiError(error) {
  */
 async function processIcons(components, fileId, config) {
   const iconComponents = components.filter(component => component.name.startsWith('icon/'));
-  if (iconComponents.length === 0) return;
+  if (iconComponents.length === 0) return [];
 
   console.log(chalk.yellow(`\nProcessing ${iconComponents.length} icons...`));
 
@@ -680,6 +707,8 @@ async function processIcons(components, fileId, config) {
   // Process each icon
   let iconCounter = 0;
   const totalIcons = iconComponents.length;
+  const processedComponentNames = new Set();
+
   for (const component of iconComponents) {
     iconCounter++;
     const imageUrl = iconUrls[component.id];
@@ -706,6 +735,7 @@ async function processIcons(components, fileId, config) {
           // Create asset catalog structure
           const assetPath = path.join(config.icons.path, `${fileName}.imageset`);
           await fs.ensureDir(assetPath);
+          await fs.emptyDir(assetPath);
 
           // Save SVG directly for iOS
           const filePath = path.join(assetPath, `${fileName}.svg`);
@@ -713,11 +743,12 @@ async function processIcons(components, fileId, config) {
 
           // Create Contents.json
           const contentsPath = path.join(assetPath, 'Contents.json');
-          const contents = createContentsJson(fileName, 'icon');
+          const contents = createContentsJson(fileName, config.images.format);
           await fs.writeFile(contentsPath, contents, 'utf8');
         }
 
         spinner.succeed(`Icon saved (${iconCounter}/${totalIcons}): ${fileName}`);
+        processedComponentNames.add(component.name);
       } catch (error) {
         spinner.fail(`Failed to process icon (${iconCounter}/${totalIcons}): ${component.name}`);
         console.error(chalk.red(error.message));
@@ -726,6 +757,8 @@ async function processIcons(components, fileId, config) {
       console.error(chalk.red(`No image URL found for icon (${iconCounter}/${totalIcons}): ${component.name}`));
     }
   }
+
+  return processedComponentNames;
 }
 
 /**
@@ -733,18 +766,24 @@ async function processIcons(components, fileId, config) {
  */
 async function processImages(components, fileId, config) {
   const imageComponents = components.filter(component => component.name.startsWith('img/'));
-  if (imageComponents.length === 0) return;
+  if (imageComponents.length === 0) return [];
 
   console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
+  // Process each image
   let imageCounter = 0;
   const totalImages = imageComponents.length;
+  const processedComponentNames = new Set();
+
   for (const component of imageComponents) {
     imageCounter++;
+
     // Extract the image name from the component name (remove 'img/' prefix)
     const imageName = component.name.replace('img/', '');
     const sanitizedName = imageName.replace(/\s+/g, '_').toLowerCase();
     const fileNameBase = `${config.images.prefix}${sanitizedName}`;
+
+    let failed = false;
 
     if (config.platform === 'android') {
       // Get the list of DPIs to process (exclude any in skipDpi)
@@ -769,23 +808,17 @@ async function processImages(components, fileId, config) {
           continue;
         }
 
-        const spinner = ora(`Processing image (${imageCounter}/${totalImages}) [${dpi}]: ${component.name}`).start();
-        try {
-          let imageBuffer = await downloadImage(imageUrl);
+        let processedImage = await downloadImage(imageUrl);
 
-          // Convert to WebP if needed
-          if (config.images.format === 'webp') {
-            imageBuffer = await sharp(imageBuffer)
-              .webp({ quality: config.images.quality })
-              .toBuffer();
-          }
-
-          await fs.writeFile(filePath, imageBuffer);
-          spinner.succeed(`Image saved (${imageCounter}/${totalImages}) [${dpi}]: ${fileNameBase}`);
-        } catch (error) {
-          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}) [${dpi}]: ${component.name}`);
-          console.error(chalk.red(error.message));
+        // Convert to WebP if needed
+        if (config.images.format === 'webp') {
+          processedImage = await sharp(processedImage)
+            .webp({ quality: config.images.quality })
+            .toBuffer();
         }
+
+        // Save the processed image
+        await fs.writeFile(filePath, processedImage);
       }
     } else {
       // Create asset catalog structure
@@ -793,37 +826,41 @@ async function processImages(components, fileId, config) {
       await fs.ensureDir(assetPath);
       await fs.emptyDir(assetPath);
 
-      // Process for each scale (1x, 2x, 3x)
+      // Process for each scale (1x, 2x, 3x for universal and 1x, 2x for iPad)
       for (const [scale, factor] of Object.entries(IOS_SCALES)) {
         // Download the image from Figma at the correct scale
         const imageUrls = await getImageUrls(fileId, [component], config.images.format, factor, config.platform);
         const imageUrl = imageUrls[component.id];
         if (!imageUrl) {
           console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`));
+          failed = true;
           continue;
         }
 
         let scaleFileName;
         if (scale.startsWith('ipad_')) {
+          // Handle iPad-specific scales
           const ipadScale = scale.replace('ipad_', '');
-            scaleFileName = ipadScale === '1x' ?
-              `${fileNameBase}~ipad` :
-              `${fileNameBase}~ipad@${ipadScale}`;
+          scaleFileName = ipadScale === '1x' ?
+            `${fileNameBase}~ipad` :
+            `${fileNameBase}~ipad@${ipadScale}`;
         } else {
+          // Handle universal scales
           scaleFileName = scale === '1x' ?
             fileNameBase :
             `${fileNameBase}@${scale}`;
         }
 
-        const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
-        const spinner = ora(`Processing image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`).start();
         try {
-          const imageBuffer = await downloadImage(imageUrl);
-          await fs.writeFile(filePath, imageBuffer);
-          spinner.succeed(`Image saved (${imageCounter}/${totalImages}) [${scale}]: ${scaleFileName}`);
+          const spinner = ora(`Processing image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`).start();
+          const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
+          const processedImage = await downloadImage(imageUrl);
+          await fs.writeFile(filePath, processedImage);
+          spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
         } catch (error) {
-          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`);
+          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
           console.error(chalk.red(error.message));
+          failed = true;
         }
       }
 
@@ -832,7 +869,13 @@ async function processImages(components, fileId, config) {
       const contents = createContentsJson(fileNameBase, config.images.format);
       await fs.writeFile(contentsPath, contents, 'utf8');
     }
+
+    if (!failed) {
+      processedComponentNames.add(component.name);
+    }
   }
+
+  return processedComponentNames;
 }
 
 /**
@@ -862,8 +905,23 @@ async function main() {
     const components = await fetchComponents(fileId, componentNames, pageId, pageName);
 
     // Process icons and images
-    await processIcons(components, fileId, config);
-    await processImages(components, fileId, config);
+    const processedIconNames = await processIcons(components, fileId, config);
+    const processedImageNames = await processImages(components, fileId, config);
+
+    // Combine all processed component names
+    const allProcessedComponentNames = new Set([...processedIconNames, ...processedImageNames]);
+
+    // Find unprocessed components
+    const unprocessedComponentNames = componentNames.filter(componentName =>
+      !allProcessedComponentNames.has(componentName)
+    );
+
+    if (unprocessedComponentNames.length > 0) {
+      console.log(chalk.red('\nThe following components were not processed:'));
+      unprocessedComponentNames.forEach(componentName => {
+        console.log(chalk.red(`- ${componentName}`));
+      });
+    }
 
     console.log(chalk.green('\nAsset download and processing complete!'));
   } catch (error) {
