@@ -510,24 +510,19 @@ function traverseNode(node, callback, path = [], depth = 0) {
  * Get image URLs for components
  */
 async function getImageUrls(fileId, components, format = 'svg', scale = 1, platform) {
-  const spinner = ora(`Getting image URLs from Figma (format: ${format}, scale: ${scale})...`).start();
-
   try {
     const componentIds = components.map(component => component.id).join(',');
     // Request the highest scale for images to ensure high quality
     const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}&scale=${scale}`);
 
     if (!response.data.images) {
-      spinner.fail(`No image URLs returned from Figma API (format: ${format}, scale: ${scale})`);
-      return [];
+      throw new Error(`No image URLs returned from Figma API (format: ${format}, scale: ${scale})`);
     }
 
-    spinner.succeed(`Successfully retrieved image URLs (format: ${format}, scale: ${scale})`);
     return response.data.images;
   } catch (error) {
-    spinner.fail(`Error getting image URLs from Figma (format: ${format}, scale: ${scale})`);
     handleApiError(error);
-    return [];
+    throw error;
   }
 }
 
@@ -702,7 +697,16 @@ async function processIcons(components, fileId, config) {
   console.log(chalk.yellow(`\nProcessing ${iconComponents.length} icons...`));
 
   // Get SVG URLs for icons
-  const iconUrls = await getImageUrls(fileId, iconComponents, 'svg', 1, config.platform);
+  const spinner = ora(`Getting image URLs from Figma...`).start();
+  let iconUrls;
+  try {
+    iconUrls = await getImageUrls(fileId, iconComponents, 'svg', 1, config.platform);
+    spinner.succeed(`Successfully retrieved image URLs`);
+  } catch (error) {
+    spinner.fail(`Error getting image URLs from Figma`);
+    console.error(chalk.red(error.message));
+    return [];
+  }
 
   // Process each icon
   let iconCounter = 0;
@@ -794,31 +798,41 @@ async function processImages(components, fileId, config) {
       // Process for each DPI
       for (const dpi of dpisToProcess) {
         const scale = ANDROID_DPI_SCALES[dpi];
-        const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
-        await fs.ensureDir(drawablePath);
+        const spinner = ora(`Processing image (${imageCounter}/${totalImages}): ${component.name} [${dpi}]`).start();
+        
+        try { 
+          const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
+          await fs.ensureDir(drawablePath);
 
-        const fileName = `${fileNameBase}.${config.images.format}`;
-        const filePath = path.join(drawablePath, fileName);
+          const fileName = `${fileNameBase}.${config.images.format}`;
+          const filePath = path.join(drawablePath, fileName);
 
-        // Download the image from Figma at the correct scale
-        const imageUrls = await getImageUrls(fileId, [component], 'png', scale, config.platform);
-        const imageUrl = imageUrls[component.id];
-        if (!imageUrl) {
-          console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}) [${dpi}]: ${component.name}`));
-          continue;
+          // Download the image from Figma at the correct scale
+          const imageUrls = await getImageUrls(fileId, [component], 'png', scale, config.platform);
+          const imageUrl = imageUrls[component.id];
+          if (!imageUrl) {
+            spinner.fail(`No image URL found for image (${imageCounter}/${totalImages}) [${dpi}]: ${component.name}`);
+            failed = true;
+            continue;
+          }
+
+          let processedImage = await downloadImage(imageUrl);
+
+          // Convert to WebP if needed
+          if (config.images.format === 'webp') {
+            processedImage = await sharp(processedImage)
+              .webp({ quality: config.images.quality })
+              .toBuffer();
+          }
+
+          // Save the processed image
+          await fs.writeFile(filePath, processedImage);
+          spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase} [${dpi}]`);
+        } catch (error) {
+          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name} [${dpi}]`);
+          console.error(chalk.red(error.message));
+          failed = true;
         }
-
-        let processedImage = await downloadImage(imageUrl);
-
-        // Convert to WebP if needed
-        if (config.images.format === 'webp') {
-          processedImage = await sharp(processedImage)
-            .webp({ quality: config.images.quality })
-            .toBuffer();
-        }
-
-        // Save the processed image
-        await fs.writeFile(filePath, processedImage);
       }
     } else {
       // Create asset catalog structure
@@ -828,6 +842,8 @@ async function processImages(components, fileId, config) {
 
       // Process for each scale (1x, 2x, 3x for universal and 1x, 2x for iPad)
       for (const [scale, factor] of Object.entries(IOS_SCALES)) {
+        const spinner = ora(`Processing image (${imageCounter}/${totalImages}): ${component.name} [${scale}]`).start();
+
         // Download the image from Figma at the correct scale
         const imageUrls = await getImageUrls(fileId, [component], config.images.format, factor, config.platform);
         const imageUrl = imageUrls[component.id];
@@ -852,13 +868,12 @@ async function processImages(components, fileId, config) {
         }
 
         try {
-          const spinner = ora(`Processing image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`).start();
           const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
           const processedImage = await downloadImage(imageUrl);
           await fs.writeFile(filePath, processedImage);
-          spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
+          spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase} [${scale}]`);
         } catch (error) {
-          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
+          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name} [${scale}]`);
           console.error(chalk.red(error.message));
           failed = true;
         }
