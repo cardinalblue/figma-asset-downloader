@@ -69,15 +69,3 @@ images:
     # - "xhdpi"  # Uncomment to skip xhdpi
     # - "xxhdpi"  # Uncomment to skip xxhdpi
     # - "xxxhdpi"  # Uncomment to skip xxxhdpi
-
-# Configuration for button assets
-buttons:
-  # Android: (SVG -> Android Vector Drawable)
-  # Path where button assets will be saved (default: 'res')
-  # The tool will create a 'drawable' subdirectory in this path
-  path: "app/src/main/res"
-  # path: "Assets.xcassets" # iOS
-
-  # Prefix for button filenames (default: 'button_')
-  # For example, button/home_tab on figma will be downloaded as button_home_tab.xml
-  prefix: "button_"

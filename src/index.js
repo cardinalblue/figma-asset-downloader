@@ -908,74 +908,6 @@ async function processImages(components, fileId, config) {
 }
 
 /**
- * Process and save buttons from Figma components
- */
-async function processButtons(components, fileId, config) {
-  const buttonComponents = components.filter(component => component.name.startsWith('button/'));
-  if (buttonComponents.length === 0) return;
-
-  console.log(chalk.yellow(`\nProcessing ${buttonComponents.length} buttons...`));
-
-  // Get SVG URLs for buttons
-  const buttonUrls = await getImageUrls(fileId, buttonComponents, 'svg', 1, config.platform);
-
-  // Process each button
-  let buttonCounter = 0;
-  const totalButtons = buttonComponents.length;
-  const processedComponents = new Set();
-
-  for (const component of buttonComponents) {
-    buttonCounter++;
-    const imageUrl = buttonUrls[component.id];
-    if (imageUrl) {
-      const spinner = ora(`Processing button (${buttonCounter}/${totalButtons}): ${component.name}`).start();
-      try {
-        // Extract the button name from the component name (remove 'button/' prefix)
-        const buttonName = component.name.replace('button/', '');
-        const sanitizedName = buttonName.replace(/\s+/g, '_').toLowerCase();
-        const fileName = `${config.buttons.prefix}${sanitizedName}`;
-
-        // Download and process the SVG
-        const svgContent = await downloadSvg(imageUrl);
-        const optimizedSvg = await optimizeSvg(svgContent);
-
-        if (config.platform === 'android') {
-          // Convert to vector drawable XML
-          const xmlContent = await convertSvgForPlatform(optimizedSvg, 'android');
-          const drawablePath = path.join(config.buttons.path, 'drawable');
-          await cleanAssetDirectory(drawablePath);
-          const filePath = path.join(drawablePath, `${fileName}.xml`);
-          await fs.writeFile(filePath, xmlContent, 'utf8');
-        } else {
-          // Create asset catalog structure
-          const assetPath = path.join(config.buttons.path, `${fileName}.imageset`);
-          await cleanAssetDirectory(assetPath);
-
-          // Save SVG directly for iOS
-          const filePath = path.join(assetPath, `${fileName}.svg`);
-          await fs.writeFile(filePath, optimizedSvg, 'utf8');
-
-          // Create Contents.json
-          const contentsPath = path.join(assetPath, 'Contents.json');
-          const contents = createContentsJson(fileName, 'svg');
-          await fs.writeFile(contentsPath, contents, 'utf8');
-        }
-
-        spinner.succeed(`Button saved (${buttonCounter}/${totalButtons}): ${fileName}`);
-        processedComponents.add(component.id);
-      } catch (error) {
-        spinner.fail(`Failed to process button (${buttonCounter}/${totalButtons}): ${component.name}`);
-        console.error(chalk.red(error.message));
-      }
-    } else {
-      console.error(chalk.red(`No image URL found for button (${buttonCounter}/${totalButtons}): ${component.name}`));
-    }
-  }
-
-  return processedComponents;
-}
-
-/**
  * Main function to run the application
  */
 async function main() {
@@ -1001,17 +933,12 @@ async function main() {
     // Fetch components
     const components = await fetchComponents(fileId, componentNames, pageId, pageName);
 
-    // Process icons, images, and buttons and get their processed component IDs
+    // Process icons and images and get their processed component IDs
     const processedIcons = await processIcons(components, fileId, config);
     const processedImages = await processImages(components, fileId, config);
-    const processedButtons = await processButtons(components, fileId, config);
 
     // Combine all processed component IDs
-    const allProcessedComponents = new Set([
-      ...processedIcons,
-      ...processedImages,
-      ...processedButtons
-    ]);
+    const allProcessedComponents = new Set([...processedIcons, ...processedImages]);
 
     // Find unprocessed components
     const unprocessedComponents = components.filter(component =>
