@@ -81,4 +81,3 @@ buttons:
   # Prefix for button filenames (default: 'button_')
   # For example, button/home_tab on figma will be downloaded as button_home_tab.xml
   prefix: "button_"
-  # prefix: "button_" # iOS
