@@ -9,7 +9,7 @@
   "scripts": {
     "build": "node -e \"require('fs').chmodSync('src/index.js', '755')\"",
     "start": "node src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test.js"
   },
   "keywords": [
     "figma",
