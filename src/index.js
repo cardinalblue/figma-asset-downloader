@@ -510,25 +510,19 @@ function traverseNode(node, callback, path = [], depth = 0) {
  * Get image URLs for components
  */
 async function getImageUrls(fileId, components, format = 'svg', scale = 1, platform) {
-  const spinner = ora('Getting image URLs from Figma...').start();
-
   try {
     const componentIds = components.map(component => component.id).join(',');
     // Request the highest scale for images to ensure high quality
-    const scaleParam = format === 'png' ? (platform === 'android' ? 4 : 3) : scale;
-    const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}&scale=${scaleParam}`);
+    const response = await figmaApi.get(`/images/${fileId}?ids=${componentIds}&format=${format}&scale=${scale}`);
 
     if (!response.data.images) {
-      spinner.fail('No image URLs returned from Figma API');
-      process.exit(1);
+      throw new Error(`No image URLs returned from Figma API (format: ${format}, scale: ${scale})`);
     }
 
-    spinner.succeed('Successfully retrieved image URLs');
     return response.data.images;
   } catch (error) {
-    spinner.fail('Error getting image URLs from Figma');
     handleApiError(error);
-    process.exit(1);
+    throw error;
   }
 }
 
@@ -603,47 +597,6 @@ async function downloadImage(url) {
     return Buffer.from(response.data, 'binary');
   } catch (error) {
     console.error(chalk.red(`Error downloading image: ${error.message}`));
-    throw error;
-  }
-}
-
-/**
- * Process an image for a specific scale
- */
-async function processImageForScale({
-  imageBuffer,
-  scale,
-  format,
-  quality,
-  maxScale
-}) {
-  try {
-    // Get the metadata to determine original dimensions
-    const metadata = await sharp(imageBuffer).metadata();
-    const originalWidth = metadata.width;
-    const originalHeight = metadata.height;
-
-    // Calculate relative scale based on platform
-    const relativeScale = scale / maxScale;
-
-    // Calculate new dimensions based on relative scale
-    const newWidth = Math.round(originalWidth * relativeScale);
-    const newHeight = Math.round(originalHeight * relativeScale);
-
-    let sharpInstance = sharp(imageBuffer)
-      .resize({
-        width: newWidth,
-        height: newHeight,
-        fit: 'contain'
-      });
-
-    if (format === 'webp') {
-      return await sharpInstance.webp({ quality }).toBuffer();
-    } else {
-      return await sharpInstance.png({ quality }).toBuffer();
-    }
-  } catch (error) {
-    console.error(chalk.red(`Error processing image for ${scale}x: ${error.message}`));
     throw error;
   }
 }
@@ -744,7 +697,16 @@ async function processIcons(components, fileId, config) {
   console.log(chalk.yellow(`\nProcessing ${iconComponents.length} icons...`));
 
   // Get SVG URLs for icons
-  const iconUrls = await getImageUrls(fileId, iconComponents, 'svg', 1, config.platform);
+  const spinner = ora(`Getting image URLs from Figma...`).start();
+  let iconUrls;
+  try {
+    iconUrls = await getImageUrls(fileId, iconComponents, 'svg', 1, config.platform);
+    spinner.succeed(`Successfully retrieved image URLs`);
+  } catch (error) {
+    spinner.fail(`Error getting image URLs from Figma`);
+    console.error(chalk.red(error.message));
+    return [];
+  }
 
   // Process each icon
   let iconCounter = 0;
@@ -812,9 +774,6 @@ async function processImages(components, fileId, config) {
 
   console.log(chalk.yellow(`\nProcessing ${imageComponents.length} images...`));
 
-  // Get PNG URLs for images
-  const imageUrls = await getImageUrls(fileId, imageComponents, 'png', 1, config.platform);
-
   // Process each image
   let imageCounter = 0;
   const totalImages = imageComponents.length;
@@ -822,93 +781,112 @@ async function processImages(components, fileId, config) {
 
   for (const component of imageComponents) {
     imageCounter++;
-    const imageUrl = imageUrls[component.id];
-    if (imageUrl) {
-      const spinner = ora(`Processing image (${imageCounter}/${totalImages}): ${component.name}`).start();
 
-      try {
-        // Extract the image name from the component name (remove 'img/' prefix)
-        const imageName = component.name.replace('img/', '');
-        const sanitizedName = imageName.replace(/\s+/g, '_').toLowerCase();
-        const fileNameBase = `${config.images.prefix}${sanitizedName}`;
+    // Extract the image name from the component name (remove 'img/' prefix)
+    const imageName = component.name.replace('img/', '');
+    const sanitizedName = imageName.replace(/\s+/g, '_').toLowerCase();
+    const fileNameBase = `${config.images.prefix}${sanitizedName}`;
 
-        // Download the image
-        const imageBuffer = await downloadImage(imageUrl);
+    let failed = false;
 
-        if (config.platform === 'android') {
-          // Get the list of DPIs to process (exclude any in skipDpi)
-          const dpisToProcess = Object.keys(ANDROID_DPI_SCALES).filter(dpi =>
-            !config.images.skipDpi || !config.images.skipDpi.includes(dpi)
-          );
+    if (config.platform === 'android') {
+      // Get the list of DPIs to process (exclude any in skipDpi)
+      const dpisToProcess = Object.keys(ANDROID_DPI_SCALES).filter(dpi =>
+        !config.images.skipDpi || !config.images.skipDpi.includes(dpi)
+      );
 
-          // Process for each DPI
-          for (const dpi of dpisToProcess) {
-            const scale = ANDROID_DPI_SCALES[dpi];
-            const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
-            await fs.ensureDir(drawablePath);
+      // Process for each DPI
+      for (const dpi of dpisToProcess) {
+        const scale = ANDROID_DPI_SCALES[dpi];
+        const spinner = ora(`Processing image (${imageCounter}/${totalImages}): ${component.name} [${dpi}]`).start();
+        
+        try { 
+          const drawablePath = path.join(config.images.path, `drawable-${dpi}`);
+          await fs.ensureDir(drawablePath);
 
-            const fileName = `${fileNameBase}.${config.images.format}`;
-            const filePath = path.join(drawablePath, fileName);
+          const fileName = `${fileNameBase}.${config.images.format}`;
+          const filePath = path.join(drawablePath, fileName);
 
-            const processedImage = await processImageForScale({
-              imageBuffer,
-              scale,
-              format: config.images.format,
-              quality: config.images.quality,
-              maxScale: ANDROID_DPI_SCALES.xxxhdpi
-            });
-
-            // Save the processed image
-            await fs.writeFile(filePath, processedImage);
-          }
-        } else {
-          // Create asset catalog structure
-          const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
-          await fs.ensureDir(assetPath);
-          await fs.emptyDir(assetPath);
-
-          // Process for each scale (1x, 2x, 3x for universal and 1x, 2x for iPad)
-          for (const [scale, factor] of Object.entries(IOS_SCALES)) {
-            const processedImage = await processImageForScale({
-              imageBuffer,
-              scale: factor,
-              format: config.images.format,
-              quality: config.images.quality,
-              maxScale: IOS_SCALES['3x']
-            });
-
-            let scaleFileName;
-            if (scale.startsWith('ipad_')) {
-              // Handle iPad-specific scales
-              const ipadScale = scale.replace('ipad_', '');
-              scaleFileName = ipadScale === '1x' ?
-                `${fileNameBase}~ipad` :
-                `${fileNameBase}~ipad@${ipadScale}`;
-            } else {
-              // Handle universal scales
-              scaleFileName = scale === '1x' ?
-                fileNameBase :
-                `${fileNameBase}@${scale}`;
-            }
-
-            const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
-            await fs.writeFile(filePath, processedImage);
+          // Download the image from Figma at the correct scale
+          const imageUrls = await getImageUrls(fileId, [component], 'png', scale, config.platform);
+          const imageUrl = imageUrls[component.id];
+          if (!imageUrl) {
+            spinner.fail(`No image URL found for image (${imageCounter}/${totalImages}) [${dpi}]: ${component.name}`);
+            failed = true;
+            continue;
           }
 
-          // Create Contents.json
-          const contentsPath = path.join(assetPath, 'Contents.json');
-          const contents = createContentsJson(fileNameBase, config.images.format);
-          await fs.writeFile(contentsPath, contents, 'utf8');
+          let processedImage = await downloadImage(imageUrl);
+
+          // Convert to WebP if needed
+          if (config.images.format === 'webp') {
+            processedImage = await sharp(processedImage)
+              .webp({ quality: config.images.quality })
+              .toBuffer();
+          }
+
+          // Save the processed image
+          await fs.writeFile(filePath, processedImage);
+          spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase} [${dpi}]`);
+        } catch (error) {
+          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name} [${dpi}]`);
+          console.error(chalk.red(error.message));
+          failed = true;
         }
-
-        spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase}`);
-        processedComponentNames.add(component.name);
-      } catch (error) {
-        spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name}`);
-        console.error(chalk.red(error.message));
       }
     } else {
-      console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}): ${component.name}`));
+      // Create asset catalog structure
+      const assetPath = path.join(config.images.path, `${fileNameBase}.imageset`);
+      await fs.ensureDir(assetPath);
+      await fs.emptyDir(assetPath);
+
+      // Process for each scale (1x, 2x, 3x for universal and 1x, 2x for iPad)
+      for (const [scale, factor] of Object.entries(IOS_SCALES)) {
+        const spinner = ora(`Processing image (${imageCounter}/${totalImages}): ${component.name} [${scale}]`).start();
+
+        // Download the image from Figma at the correct scale
+        const imageUrls = await getImageUrls(fileId, [component], config.images.format, factor, config.platform);
+        const imageUrl = imageUrls[component.id];
+        if (!imageUrl) {
+          console.error(chalk.red(`No image URL found for image (${imageCounter}/${totalImages}) [${scale}]: ${component.name}`));
+          failed = true;
+          continue;
+        }
+
+        let scaleFileName;
+        if (scale.startsWith('ipad_')) {
+          // Handle iPad-specific scales
+          const ipadScale = scale.replace('ipad_', '');
+          scaleFileName = ipadScale === '1x' ?
+            `${fileNameBase}~ipad` :
+            `${fileNameBase}~ipad@${ipadScale}`;
+        } else {
+          // Handle universal scales
+          scaleFileName = scale === '1x' ?
+            fileNameBase :
+            `${fileNameBase}@${scale}`;
+        }
+
+        try {
+          const filePath = path.join(assetPath, `${scaleFileName}.${config.images.format}`);
+          const processedImage = await downloadImage(imageUrl);
+          await fs.writeFile(filePath, processedImage);
+          spinner.succeed(`Image saved (${imageCounter}/${totalImages}): ${fileNameBase} [${scale}]`);
+        } catch (error) {
+          spinner.fail(`Failed to process image (${imageCounter}/${totalImages}): ${component.name} [${scale}]`);
+          console.error(chalk.red(error.message));
+          failed = true;
+        }
+      }
+
+      // Create Contents.json
+      const contentsPath = path.join(assetPath, 'Contents.json');
+      const contents = createContentsJson(fileNameBase, config.images.format);
+      await fs.writeFile(contentsPath, contents, 'utf8');
+    }
+
+    if (!failed) {
+      processedComponentNames.add(component.name);
     }
   }
 
@@ -956,7 +934,8 @@ async function main() {
     if (unprocessedComponentNames.length > 0) {
       console.log(chalk.red('\nThe following components were not processed:'));
       unprocessedComponentNames.forEach(componentName => {
-        console.log(chalk.red(`- ${componentName}`));
+        const componentExists = components.some(c => c.name === componentName);
+        console.log(chalk.red(`- ${componentName}${!componentExists ? ' (not found)' : ''}`));
       });
     }
 
