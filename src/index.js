@@ -70,12 +70,14 @@ program
   .option('-a, --all', 'Download all components')
   .option('-f, --find-duplicate', 'Find and list all duplicate components')
   .option('-s, --section <section>', 'Download components from a specific section')
+  .option('--node-id <nodeId>', 'Specify a specific node ID when there are duplicate component names')
   .parse(process.argv);
 
 const componentNames = program.args;
 const downloadAll = program.opts().all;
 const findDuplicate = program.opts().findDuplicate;
 const sectionName = program.opts().section;
+const nodeId = program.opts().nodeId;
 
 // Show help message if no component names are provided and neither --all nor --find-duplicate flags are set
 if (componentNames.length === 0 && !downloadAll && !findDuplicate && !sectionName) {
@@ -87,6 +89,7 @@ if (componentNames.length === 0 && !downloadAll && !findDuplicate && !sectionNam
   console.log('  -a, --all                Download all components');
   console.log('  -f, --find-duplicate     Find and list all duplicate components');
   console.log('  -s, --section <section>  Download components from a specific section');
+  console.log('  --node-id <nodeId>       Specify a specific node ID when there are duplicate component names');
   console.log('  -V, --version            Output the version number');
   console.log('  -h, --help               Display help for command');
   console.log('\nExamples:');
@@ -96,6 +99,7 @@ if (componentNames.length === 0 && !downloadAll && !findDuplicate && !sectionNam
   console.log('  figma-asset-downloader --all                 # Download all components');
   console.log('  figma-asset-downloader --find-duplicate      # Find and list all duplicate components');
   console.log('  figma-asset-downloader --section="Section Name" # Download components from a specific section');
+  console.log('  figma-asset-downloader icon/layer_locked --node-id="7621%3A10256" # Download specific duplicate component');
   process.exit(0);
 }
 
@@ -288,7 +292,7 @@ function loadConfig() {
 /**
  * Fetch components from Figma file
  */
-async function fetchComponents(fileId, componentNames, pageId = '', pageName = '') {
+async function fetchComponents(fileId, componentNames, pageId = '', pageName = '', nodeId = '') {
   const spinner = ora('Fetching components from Figma...').start();
 
   try {
@@ -337,21 +341,58 @@ async function fetchComponents(fileId, componentNames, pageId = '', pageName = '
 
       // Handle duplicates if any
       if (duplicates.size > 0) {
-        spinner.fail('Found duplicate components with the same name');
+        // If nodeId is provided, try to resolve the duplicate using the specific node ID
+        if (nodeId) {
+          let resolvedComponent = null;
+          let resolvedName = null;
 
-        duplicates.forEach((components, name) => {
-          console.error(chalk.red(`Error: Multiple components found with the exact name "${name}"`));
-          console.error(chalk.red(`Cannot download because of ambiguity. Please rename components to be unique.`));
-
-          // Print links to the Figma file with the duplicated components focused
-          console.log(chalk.yellow('\nLinks to duplicated components:'));
-          components.forEach((component, index) => {
-            const figmaLink = `https://www.figma.com/file/${fileId}?node-id=${encodeURIComponent(component.id)}`;
-            console.log(chalk.cyan(`${index + 1}. ${component.path} - ${figmaLink}`));
+          // Look for the component with the specified node ID among duplicates
+          duplicates.forEach((components, name) => {
+            const matchingComponent = components.find(component => component.id === nodeId);
+            if (matchingComponent) {
+              resolvedComponent = matchingComponent;
+              resolvedName = name;
+            }
           });
-        });
 
-        process.exit(1);
+          if (resolvedComponent) {
+            // Replace the duplicate entry with the resolved component
+            nameMap.set(resolvedName, resolvedComponent);
+            duplicates.delete(resolvedName);
+            console.log(chalk.green(`Resolved duplicate "${resolvedName}" using node ID: ${nodeId}`));
+          } else {
+            console.error(chalk.red(`Error: Node ID "${nodeId}" not found among duplicate components.`));
+            
+            // Show available node IDs for duplicates
+            duplicates.forEach((components, name) => {
+              console.log(chalk.yellow(`\nAvailable node IDs for "${name}":`));
+              components.forEach((component, index) => {
+                const figmaLink = `https://www.figma.com/file/${fileId}?node-id=${encodeURIComponent(component.id)}`;
+                console.log(chalk.cyan(`${index + 1}. ${component.path} - node-id=${component.id} - ${figmaLink}`));
+              });
+            });
+            process.exit(1);
+          }
+        }
+
+        // If there are still unresolved duplicates, show error
+        if (duplicates.size > 0) {
+          spinner.fail('Found duplicate components with the same name');
+
+          duplicates.forEach((components, name) => {
+            console.error(chalk.red(`Error: Multiple components found with the exact name "${name}"`));
+            console.error(chalk.red(`Cannot download because of ambiguity. Use --node-id to specify which one to download.`));
+
+            // Print links to the Figma file with the duplicated components focused
+            console.log(chalk.yellow('\nLinks to duplicated components:'));
+            components.forEach((component, index) => {
+              const figmaLink = `https://www.figma.com/file/${fileId}?node-id=${encodeURIComponent(component.id)}`;
+              console.log(chalk.cyan(`${index + 1}. ${component.path} - node-id=${component.id} - ${figmaLink}`));
+            });
+          });
+
+          process.exit(1);
+        }
       }
 
       // Filter to only include exact matches
@@ -917,7 +958,7 @@ async function main() {
     }
 
     // Fetch components
-    const components = await fetchComponents(fileId, componentNames, pageId, pageName);
+    const components = await fetchComponents(fileId, componentNames, pageId, pageName, nodeId);
 
     // Process icons and images
     const processedIconNames = await processIcons(components, fileId, config);
