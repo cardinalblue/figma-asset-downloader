@@ -40,13 +40,13 @@
     "js-yaml": "^4.1.0",
     "node-fetch": "^2.7.0",
     "ora": "^5.4.1",
-    "sharp": "^0.32.6",
+    "sharp": "^0.35.5",
     "svg2vectordrawable": "^2.9.1",
     "svgo": "^3.0.4",
     "svgson": "^5.3.1"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=24.22.1"
   },
   "publishConfig": {
     "access": "public"
